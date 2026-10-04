@@ -38,7 +38,7 @@ docs/dcddp-modeling/
 └── diagrams/                       # SVG
 ```
 
-**写入按粒度分流**：`dcddp init --org <组织名>` 建空模型；初建或成批补充时，把分析结果写成一份**不带 id 的嵌套草稿**（顶层 `<kind>: [条目]`，嵌套即归属，引用用 `<kind>:<name>`），`dcddp import draft.yaml --dry-run` 看计划再写入；零星增删改用 `add-node` / `connect` 等动词。两条路都由 CLI 取号、放进 index、写到正确的细节文件并校验。只有在没有 CLI 可用时才手写模型文件，并严格遵守下面的形状，写完必跑 `dcddp validate`。
+**写入按粒度分流**：`dcddp init --org <组织名>` 建空模型；初建或成批补充时，把分析结果写成一份**不带 id 的嵌套草稿**（顶层 `<kind>: [条目]`，嵌套即归属，引用用 `<kind>:<name>`），`dcddp import draft.yaml --dry-run` 看计划再写入；零星增删改用 `add-node` / `connect` 等动词。两条路都由 CLI 取号、放进 index、写到正确的细节文件并校验。模型文件只由 CLI 写入；CLI 跑不起来就停下来让用户配置（clone 本仓库、`npm install`、设置 `dcd_root`），不要退回手写 YAML。下面的形状是给你读模型和写草稿时理解结构用的。
 
 三条存储规则：
 

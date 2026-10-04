@@ -31,6 +31,12 @@ user_invocable: true
 
 讨论系统现状、变更前对齐、实现拆解时，统一按本方法论的语言进行。
 
+**三条铁律（先读这里）**
+
+1. 模型只通过 `dcddp` CLI 读写：查看用 list / get / describe，修改用六个动词或 `import` 草稿。**不要 Read / Edit `docs/dcddp-modeling/` 下的 YAML**，不要用 python / grep 代替 CLI。
+2. 动手前先 `dcddp validate`，有 `migration-report.md` 先读它。做完再 `validate`，零 error 才算完成。
+3. CLI 跑不起来（`dcd_root` 缺失、路径不存在、没 `npm install`）→ **停下来告诉用户怎么配**，不要退回手写 YAML。
+
 ### 核心约定（摘要）
 
 - **4 视图分层**：业务视图（参与方/业务用例/系统用例）、领域模型视图（实体/关系/状态机/规则）、系统逻辑视图（应用/拓扑/应用用例/页面）、系统部署视图。
@@ -82,15 +88,20 @@ node <dcd-root>/apply/bin/dcddp add-node rule --parent app-use-case:CommandPicke
 
 **唯一例外**：排查 loader / CLI 自身 bug、或需要精确定位 YAML 原始字段名 → 归一化 key 的映射关系时，才允许直接读 YAML。
 
-### 写模型：按粒度分流
+### 写模型：只通过 CLI，禁止手写模型文件
+
+模型文件（`index.yaml` 和 `business/`、`applications/` 下的 YAML）**只能由 `dcddp` 写入**。手写会漏掉 index 登记、取号、边的存储形状和级联清理——只写进细节文件而没进 `index.yaml` 的节点不存在（validate 报 orphan-entry）。
 
 | 场景 | 做法 |
 |---|---|
-| 增量：加一个节点、连一条边、改名、挪 package、删节点 | 六个动词（add-node / update-node / remove-node / connect / update-edge / disconnect）。取号、index 与细节文件双写、边的存储形状、删除级联都由 CLI 保证 |
-| 批量：初建模型、一次补一批节点和边 | 写一份**不带 id 的嵌套草稿** YAML（顶层 `<kind>: [条目]`，嵌套即归属，引用用 `<kind>:<name>` 或唯一的裸名字），`dcddp import draft.yaml --dry-run` 看计划，再去掉 `--dry-run` 写入。草稿格式见 CLI 手册 |
-| 不得已直接改模型文件（CLI 不可用） | 改完必跑 `dcddp validate`，零 error 才算完成；id 自己从 `sequences` 取号、index 与细节文件都要写 |
+| 动手前 | 先跑 `dcddp validate -m ./docs/dcddp-modeling`：确认 CLI 可用、看当前有哪些问题；若存在 `migration-report.md`，先读它，里面的 dropped references 是待补的边 |
+| 增量：加一个节点、连一条边、改名、挪 package、删节点 | 六个动词（add-node / update-node / remove-node / connect / update-edge / disconnect） |
+| 批量：初建模型、补一整块（如"业务模型是空的"）、一次补一批节点和边 | 写一份**不带 id 的嵌套草稿** YAML（顶层 `<kind>: [条目]`，嵌套即归属，引用用 `<kind>:<name>` 或唯一的裸名字），`dcddp import draft.yaml --dry-run` 看计划，再去掉 `--dry-run` 写入。草稿格式与样板见 `<dcd-root>/methodology/examples/food-delivery/draft.yaml` |
+| 写完 | `dcddp validate` 零 error 才算完成 |
+| CLI 跑不起来（`dcd_root` 缺失、路径不存在、`node_modules` 没装） | **停下来告诉用户**，让用户在本机 clone dcd-ai-excellence、`npm install`、在 `.claude/settings.local.json` 写 `dcd_root`。不要退回手写 YAML，也不要用 python 脚本代替 validate |
 
 ```bash
+node <dcd-root>/apply/bin/dcddp validate -m ./docs/dcddp-modeling
 node <dcd-root>/apply/bin/dcddp import draft.yaml --dry-run -m ./docs/dcddp-modeling
 node <dcd-root>/apply/bin/dcddp import draft.yaml -m ./docs/dcddp-modeling
 ```
@@ -122,6 +133,8 @@ node <dcd-root>/apply/bin/dcddp import draft.yaml -m ./docs/dcddp-modeling
 | "重命名 X" | 模型 + 代码 + 文档/测试/配置 一次同步改；单点改视为不完整 |
 | "这块大改怎么排期？" | **不要主动提议阶段拆分**；用户没要求时默认一次性彻底重构 |
 | "看下 xxx 模型 / 这个节点是什么" | 用 `dcddp` CLI（list / get / describe），不要 Read YAML |
+| "模型里 xxx 是空的，补一下" / "把 xxx 建模" | 先 `validate` + 读 `migration-report.md`；从代码 / 文档分析出内容，写成草稿，`import --dry-run` 确认后导入；不要直接编辑 `business/*.yaml` |
+| "migration-report 里有 dropped references" | 逐条用 `connect` 补边（目标用 id 或 `<kind>:<name>`），补完 `validate` |
 
 补充：
 - 用户讨论"某模块/功能/流程"时，先用 4 视图框架反问：当前在哪个视图层？涉及的用例是哪一层？是否已有相关模型文件？

@@ -30,6 +30,7 @@ v7 之前（v1..v6.2 方法论迭代）的历史，见 `v6/v6.2/` 及其祖先�
 ### 2026-10-04 追加：resource（技术资源 / 集成点）
 
 - 新 node-kind `resource`（前缀 res，挂在 application 下；attrs：type / spec / summary；type 封闭取值 api / topic / table / cache-key / queue / file / bucket）
+- 注入段：模型文件只由 CLI 写入，禁止手写；动手前先 `validate` 并读 `migration-report.md`；CLI 不可用时停下来让用户配置，不退回手写；行为指引新增“补一块模型”“dropped references”两行
 - 新 kind `metric`（name + `expression`，数据来源等放 `ext`；业务指标在业务视图根，技术指标挂应用下）与 rel `measures`（指标 → 任一层用例 / 实体）；studio 侧边栏“指标”组、指标页、用例 / 实体页“监控指标”分区
 - 任意节点可带 `ext` map 扩展属性：CLI 不再对它告警，validate 检查是 map，studio 只读展示 / JSON 编辑
 - `uses` 新增 business-use-case → entity 与 system-use-case → entity 端点（mode read / write，存 `entities` 字段）；validate 检查目标必须是业务层实体（layer）。studio 业务 / 系统用例页“涉及的业务实体”，实体页“被哪些用例使用”含三层用例
