@@ -49,7 +49,7 @@ export function EditToolbar({ id }: { id: string }) {
         if (!window.confirm(`删除 ${node.kind} "${node.name}"（${id}）${n > 0 ? `及其下 ${n} 个节点` : ''}？\n会同时清理指向它们的引用。此操作直接写入 YAML。`)) return
         const parent = node.parent
         const r = await m.removeNode(id)
-        if (r) navigate(parent ?? (node.view === 'business' ? 'business' : 'applications'), !!parent)
+        if (r) navigate(parent ?? node.view, !!parent)
       }}>🗑 删除</button>
       {picking === 'parent' && <Picker title={`把「${node.name}」移动到…`} options={parentOptions} onCancel={() => setPicking(null)} onPick={async pid => { setPicking(null); await m.updateNode(id, { parent: pid }) }} />}
     </div>
@@ -221,7 +221,7 @@ export function ChildrenCard({ id }: { id: string }) {
 }
 
 // "＋ 新建 <kind>" for root kinds on view pages / app groups.
-export function AddRootButtons({ view, parent }: { view?: 'business' | 'applications'; parent?: string }) {
+export function AddRootButtons({ view, parent }: { view?: 'business' | 'applications' | 'deployment'; parent?: string }) {
   const { vocab, canEdit, ix } = useGraph()
   const m = useMutations()
   if (!canEdit || !vocab) return null

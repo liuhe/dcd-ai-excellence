@@ -125,7 +125,13 @@ dcddp connect ent-020 --rel realizes --to ent-001        # 应用实体实现业
 dcddp add-node resource "POST /api/session" --parent application:server --set type=api
 dcddp connect auc-040 --rel exposes --to "resource:POST /api/session"             # 用例实现接口
 dcddp connect auc-040 --rel uses --to entity:ClaudeSession --set mode=write       # 用例使用实体
-dcddp add-node metric 下单支付转化率 --set expression="Paid / Created，按日" --set ext.data_source=ClickHouse   # 业务指标（根）
+dcddp add-node solution 订单履约 --set summary="从支付成功到送达"                                         # 方案：应用视图根
+dcddp connect solution:订单履约 --rel covers --to app-use-case:ConfirmPayment                             # 方案覆盖用例 / 实体
+dcddp add-node data-source mysql-orders --set type=mysql --set endpoint=mysql-orders.internal:3306              # 部署视图：数据源（业务数据）
+dcddp connect resource:t_order --rel stored-in --to data-source:mysql-orders                                # 资源存放在哪个数据源
+dcddp add-node observability-store prometheus-prod --set type=prometheus --set grafana_url=https://grafana.example.com   # 部署视图：可观测性存储
+dcddp add-node metric 下单支付转化率 --set expression="Paid / Created，按日"                                  # 业务指标（根）
+dcddp connect metric:下单支付转化率 --rel sourced-from --to observability-store:clickhouse-dw               # 指标在哪个可观测性存储上算
 dcddp connect metric:下单支付转化率 --rel measures --to business-use-case:OrderMeal                        # 指标度量用例 / 实体
 dcddp update-node entity Order --set ext.owner=交易团队                                                   # 扩展属性：任意节点的 ext map
 dcddp add-node resource session.events --parent application:server --set type=topic

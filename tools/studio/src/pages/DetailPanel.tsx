@@ -2,7 +2,7 @@ import type { Route } from '../route'
 import { useGraph } from '../graph/store'
 import { Empty } from '../components/UI'
 import { NodePage } from './nodes'
-import { BusinessOverview, BusinessModelPage, ApplicationsOverview, OrgRelationsPage, OrgPage, WorkersPage, AppDomainPage } from './overviews'
+import { BusinessOverview, BusinessModelPage, ApplicationsOverview, OrgRelationsPage, OrgPage, WorkersPage, AppDomainPage, DeploymentOverview } from './overviews'
 
 export function DetailPanel({ route }: { route: Route }) {
   const { ix } = useGraph()
@@ -16,6 +16,7 @@ export function DetailPanel({ route }: { route: Route }) {
     case 'org-relations': return <OrgRelationsPage />
     case 'org': return ix.org() ? <OrgPage orgId={ix.org()!.id} /> : <Empty />
     case 'workers': return <WorkersPage />
+    case 'deployment': case 'data-sources': case 'observability-stores': return <DeploymentOverview />
   }
   if (id.startsWith('app-domain:')) return <AppDomainPage appId={id.slice('app-domain:'.length)} />
   // app-pages:* / app-ucs:* / pkg:* — 原设计里这些分组项没有专属页面

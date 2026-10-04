@@ -1,0 +1,16 @@
+data-source:
+  - id: ds-001
+    name: mysql-orders
+    type: mysql
+    endpoint: mysql-orders.internal:3306
+    summary: 订单库：订单、支付、退款、菜单
+  - id: ds-002
+    name: redis-prod
+    type: redis
+    endpoint: redis-prod.internal:6379
+    summary: 订单状态快照、骑手位置（GEO）、派单任务状态
+  - id: ds-003
+    name: kafka-prod
+    type: kafka
+    endpoint: kafka-prod.internal:9092
+    summary: 订单事件

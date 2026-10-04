@@ -1,0 +1,27 @@
+solution:
+  - id: sol-001
+    name: 订单履约
+    summary: 从支付成功到送达：接单、出餐、派单、配送，横跨 order-service、dispatch-service 与骑手 App
+    covers:
+      - auc-002
+      - auc-005
+      - auc-006
+      - auc-012
+      - auc-013
+      - auc-015
+      - auc-008
+      - auc-027
+      - ent-010
+      - ent-014
+      - ent-015
+  - id: sol-002
+    name: 售后退款
+    summary: 顾客申请、自动判定或客服审核、调用支付机构退款
+    covers:
+      - auc-021
+      - auc-009
+      - auc-010
+      - auc-011
+      - ent-013
+      - ent-012
+      - ent-010

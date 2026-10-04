@@ -38,14 +38,18 @@ resource:
     name: order.events
     type: topic
     spec: key = orderId；事件类型 OrderPaid / OrderAccepted / OrderReady / OrderDelivered
+    store: ds-003
   - id: res-012
     name: t_order
     type: table
     spec: 订单主表，订单行在 t_order_line
+    store: ds-001
   - id: res-013
     name: t_payment
     type: table
+    store: ds-001
   - id: res-014
     name: order:{id}:status
     type: cache-key
     spec: 订单状态快照，TTL 1 小时
+    store: ds-002

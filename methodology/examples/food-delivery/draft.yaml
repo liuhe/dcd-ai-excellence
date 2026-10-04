@@ -79,15 +79,15 @@ system:
 metric:
   - name: 下单支付转化率
     expression: 当日 status 到达过 Paid 的订单数 / 当日创建的订单数
-    ext: { data_source: ClickHouse 订单事实表（按 order.events 回放） }
+    store: clickhouse-dw
     measures: [OrderMeal, PlaceOrder, Order]
   - name: 平均送达时长
     expression: avg(deliveredAt - paidAt)，按小时
-    ext: { data_source: ClickHouse 订单事实表 }
+    store: clickhouse-dw
     measures: [DeliverOrder, Delivery]
   - name: 退款率
     expression: 退款申请通过数 / 已送达订单数，按日
-    ext: { data_source: ClickHouse 订单事实表 }
+    store: clickhouse-dw
     measures: [ResolveAfterSale, RefundRequest]
 entity:
   - name: Customer
@@ -252,6 +252,43 @@ entity:
       - { content: 同一订单同时只能有一个未结束的退款申请 }
     relationships:
       - { kind: associates, target: Order, cardinality: many-to-one, via: orderId }
+data-source:
+  - name: mysql-orders
+    type: mysql
+    endpoint: mysql-orders.internal:3306
+    summary: 订单库：订单、支付、退款、菜单
+  - name: redis-prod
+    type: redis
+    endpoint: redis-prod.internal:6379
+    summary: 订单状态快照、骑手位置（GEO）、派单任务状态
+  - name: kafka-prod
+    type: kafka
+    endpoint: kafka-prod.internal:9092
+    summary: 订单事件
+observability-store:
+  - name: prometheus-prod
+    type: prometheus
+    grafana_url: https://grafana.quickbite.example
+    grafana_datasource_uid: prom-prod
+    summary: 生产集群指标，各服务通过 /metrics 暴露；长期存储（Thanos）是另一个 datasource
+    ext: { grafana_datasource_uid-longterm: thanos-prod }
+  - name: loki-prod
+    type: loki
+    grafana_url: https://grafana.quickbite.example
+    grafana_datasource_uid: loki-prod
+    summary: 生产日志
+  - name: clickhouse-dw
+    type: clickhouse
+    grafana_url: https://grafana.quickbite.example
+    grafana_datasource_uid: ch-dw
+    summary: 数仓：订单事实表由 order.events 回放而来
+solution:
+  - name: 订单履约
+    summary: 从支付成功到送达：接单、出餐、派单、配送，横跨 order-service、dispatch-service 与骑手 App
+    covers: [ConfirmPayment, AcceptOrder, MarkOrderReady, AssignRider, AcceptDeliveryTask, CompleteDelivery, RecordDeliveryProgress, FinishDelivery, entity:order-service/Order, entity:order-service/Delivery, entity:dispatch-service/DeliveryTask]
+  - name: 售后退款
+    summary: 顾客申请、自动判定或客服审核、调用支付机构退款
+    covers: [RequestRefund, SubmitRefundRequest, app-use-case:order-service/ReviewRefundRequest, ExecuteRefund, entity:order-service/RefundRequest, entity:order-service/Payment, entity:order-service/Order]
 application:
   - name: order-service
     type: backend
@@ -505,11 +542,11 @@ application:
     metric:
       - name: CreateOrder p99 延迟
         expression: "histogram_quantile(0.99, sum(rate(http_server_duration_bucket{route=\"/api/orders\",method=\"POST\"}[5m])) by (le))"
-        ext: { data_source: Prometheus }
+        store: prometheus-prod
         measures: [CreateOrder]
       - name: 支付回调失败率
         expression: "sum(rate(payment_callback_total{result=\"fail\"}[5m])) / sum(rate(payment_callback_total[5m]))"
-        ext: { data_source: Prometheus }
+        store: prometheus-prod
         measures: [ConfirmPayment, Payment]
     resource:
       - { name: "POST /api/orders", type: api, spec: "body: { restaurantId, lines[{menuItemId, quantity}], deliveryAddress }" }
@@ -522,10 +559,10 @@ application:
       - { name: "POST /api/deliveries/{id}/progress", type: api, spec: "body: { stage: PickedUp | Delivered }" }
       - { name: "POST /api/refunds", type: api }
       - { name: "POST /api/refunds/{id}/review", type: api, spec: "body: { approve: boolean, reason? }" }
-      - { name: order.events, type: topic, spec: "key = orderId；事件类型 OrderPaid / OrderAccepted / OrderReady / OrderDelivered" }
-      - { name: t_order, type: table, spec: 订单主表，订单行在 t_order_line }
-      - { name: t_payment, type: table }
-      - { name: "order:{id}:status", type: cache-key, spec: 订单状态快照，TTL 1 小时 }
+      - { name: order.events, type: topic, spec: "key = orderId；事件类型 OrderPaid / OrderAccepted / OrderReady / OrderDelivered", store: kafka-prod }
+      - { name: t_order, type: table, spec: 订单主表，订单行在 t_order_line, store: mysql-orders }
+      - { name: t_payment, type: table, store: mysql-orders }
+      - { name: "order:{id}:status", type: cache-key, spec: 订单状态快照，TTL 1 小时, store: redis-prod }
   - name: dispatch-service
     type: backend
     summary: 派单服务：消费出餐事件，就近匹配骑手，跟踪骑手位置
@@ -624,15 +661,15 @@ application:
         payload: [{ taskId: Long }, { riderId: Long }, { orderId: Long }]
     metric:
       - name: 派单超时数
-        expression: 过去 10 分钟内 Offered → Pending 回退次数
-        ext: { data_source: "Redis task:{id} 状态变更日志" }
+        expression: 'count_over_time({app="dispatch-service"} |= "task offer expired" [10m])'
+        store: loki-prod
         measures: [AssignRider, DeliveryTask]
     resource:
       - { name: "POST /api/tasks/{id}/accept", type: api }
       - { name: "POST /api/riders/{id}/location", type: api, spec: "body: { lat, lng }" }
       - { name: "POST /api/tasks/{id}/complete", type: api, spec: "body: { stage: PickedUp | Delivered }" }
-      - { name: "rider:geo", type: cache-key, spec: Redis GEO 集合，member = riderId }
-      - { name: "task:{id}", type: cache-key, spec: 任务状态与当前推送骑手 }
+      - { name: "rider:geo", type: cache-key, spec: Redis GEO 集合，member = riderId, store: redis-prod }
+      - { name: "task:{id}", type: cache-key, spec: 任务状态与当前推送骑手, store: redis-prod }
   - name: customer-app
     type: frontend
     summary: 顾客端 App（iOS / Android）

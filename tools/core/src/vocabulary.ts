@@ -44,7 +44,7 @@ export interface NodeAttrSpec {
 //   'applications' → applications/<file>.yaml
 //   'app'          → applications/<app-id>-<app-name>/<file>.yaml (nearest application ancestor)
 export interface DetailLocation {
-  dir: 'business' | 'applications' | 'app'
+  dir: 'business' | 'applications' | 'deployment' | 'app'
   file: string
 }
 
@@ -56,7 +56,7 @@ export interface NodeKindSpec {
   // kinds that may be nested inside another kind's entry (containment = implicit rel).
   // A kind may have both (entity: business-scoped at top of `business`, or under
   // application / entity).
-  view?: 'business' | 'applications'
+  view?: 'business' | 'applications' | 'deployment'
   parents: string[]
   // Inline kinds are not listed in index.yaml; they live inside the owner's detail entry
   // under `inlineKey` (e.g. rules). They still get ids from the sequence table.
@@ -265,6 +265,36 @@ export const NODE_KINDS: Record<string, NodeKindSpec> = {
     ],
     description: 'Resource — a technical integration point owned by an application (api / topic / table / cache-key / queue / file / bucket). Use cases expose api resources; entities use the others',
   },
+  'solution': {
+    kind: 'solution', idPrefix: 'sol',
+    view: 'applications', parents: [],
+    location: { dir: 'applications', file: 'solutions' },
+    attrs: [{ name: 'summary', type: 'free-text' }],
+    description: 'Solution — how one concern is handled across the application layer (e.g. an entity\'s lifecycle): a named set of app use cases and entities from any application. Studio draws its use case diagram and entity diagram',
+  },
+  'observability-store': {
+    kind: 'observability-store', idPrefix: 'obs',
+    view: 'deployment', parents: [],
+    location: { dir: 'deployment', file: 'observability-stores' },
+    attrs: [
+      { name: 'type', type: 'String' },                   // one of OBSERVABILITY_STORE_TYPES
+      { name: 'grafana_url', type: 'String' },            // Grafana site that fronts this store, e.g. https://grafana.example.com
+      { name: 'grafana_datasource_uid', type: 'String' }, // uid of the matching Grafana datasource (for deep links)
+      { name: 'summary', type: 'free-text' },
+    ],
+    description: 'Observability store — where metrics, logs or traces live (prometheus / loki / elasticsearch / clickhouse / tempo / …), in the deployment view. Metrics are sourced from it; with a Grafana URL the studio deep-links a metric\'s expression into Grafana Explore',
+  },
+  'data-source': {
+    kind: 'data-source', idPrefix: 'ds',
+    view: 'deployment', parents: [],
+    location: { dir: 'deployment', file: 'data-sources' },
+    attrs: [
+      { name: 'type', type: 'String' },       // one of DATA_SOURCE_TYPES
+      { name: 'endpoint', type: 'String' },   // host / dsn / cluster name, free text
+      { name: 'summary', type: 'free-text' },
+    ],
+    description: 'Data source — a store that holds business data (mysql / postgres / redis / kafka / mongodb / s3 / …), in the deployment view. Resources (tables, cache keys, topics, buckets) are stored in it',
+  },
   'metric': {
     kind: 'metric', idPrefix: 'met',
     view: 'business', parents: ['application'],
@@ -273,7 +303,7 @@ export const NODE_KINDS: Record<string, NodeKindSpec> = {
       { name: 'expression', type: 'free-text' },   // how it is computed: PromQL / SQL / 口径
       { name: 'summary', type: 'free-text' },
     ],
-    description: 'Metric — a monitoring metric or KPI: a name and an expression. Business-level at the top of the business view, technical under an application. `measures` points at the use cases / entities it observes; anything else (data source, owner, alert) goes in `ext`',
+    description: 'Metric — a monitoring metric or KPI: a name and an expression. Business-level at the top of the business view, technical under an application. `measures` points at the use cases / entities it observes; `sourced-from` names the observability store the expression runs against',
   },
 
   // ============ Domain layer ============
@@ -377,6 +407,9 @@ export const NODE_KINDS: Record<string, NodeKindSpec> = {
 // metadata the vocabulary does not model: owner, data_source, ticket, ...). Tools keep it as-is,
 // validate only checks that it is a map, studio shows and edits it as JSON.
 export const EXT_ATTR = 'ext'
+
+export const OBSERVABILITY_STORE_TYPES = ['prometheus', 'loki', 'elasticsearch', 'clickhouse', 'tempo', 'mysql', 'postgres'] as const
+export const DATA_SOURCE_TYPES = ['mysql', 'postgres', 'redis', 'kafka', 'rabbitmq', 'mongodb', 'elasticsearch', 'clickhouse', 's3', 'oss'] as const
 
 // Closed value sets for String attrs that validate checks.
 export const RESOURCE_TYPES = ['api', 'topic', 'table', 'cache-key', 'queue', 'file', 'bucket'] as const
@@ -499,6 +532,24 @@ export const REL_KINDS: Record<string, RelKindSpec> = {
     description: 'Functional dependency: business use case invokes system use case; business / system use case uses a business-layer entity (read / write, field `entities`); entity uses a value object (derived from field types); app use case uses an entity (read / write); entity uses a resource (read / write / publish / subscribe)',
   },
 
+  'covers': {
+    kind: 'covers',
+    endpoints: ['app-use-case', 'entity'].map(target => ({ source: 'solution', target, storage: { shape: 'string-list' as const, field: 'covers' } })),
+    edgeAttrs: [],
+    description: 'Solution covers an app use case or an entity',
+  },
+  'sourced-from': {
+    kind: 'sourced-from',
+    endpoints: [{ source: 'metric', target: 'observability-store', storage: { shape: 'scalar', field: 'store' } }],
+    edgeAttrs: [],
+    description: 'Metric is computed against an observability store (its expression runs there)',
+  },
+  'stored-in': {
+    kind: 'stored-in',
+    endpoints: [{ source: 'resource', target: 'data-source', storage: { shape: 'scalar', field: 'store' } }],
+    edgeAttrs: [],
+    description: 'Resource (table / cache-key / topic / queue / file / bucket) lives in a data source',
+  },
   'measures': {
     kind: 'measures',
     endpoints: ['business-use-case', 'system-use-case', 'app-use-case', 'entity'].map(target => ({ source: 'metric', target, storage: { shape: 'string-list' as const, field: 'measures' } })),
@@ -652,7 +703,7 @@ export function inlineKindsOf(ownerKind: string): NodeKindSpec[] {
 }
 
 // Root kinds of a view (declaration order).
-export function rootKindsOf(view: 'business' | 'applications'): string[] {
+export function rootKindsOf(view: 'business' | 'applications' | 'deployment'): string[] {
   return Object.values(NODE_KINDS).filter(s => s.view === view).map(s => s.kind)
 }
 
@@ -686,7 +737,9 @@ export const REL_GROUPS: { label: string; kinds: string[] }[] = [
   { label: 'Provides', kinds: ['provides'] },
   { label: 'Actor', kinds: ['has-actor'] },
   { label: 'Functional dependency', kinds: ['uses', 'exposes', 'has-entry'] },
-  { label: 'Observability', kinds: ['measures'] },
+  { label: 'Observability', kinds: ['measures', 'sourced-from'] },
+  { label: 'Deployment', kinds: ['stored-in'] },
+  { label: 'Solution', kinds: ['covers'] },
   { label: 'Reference', kinds: ['references'] },
   { label: 'UML use-case relations', kinds: ['includes', 'extends'] },
   { label: 'DDD entity relations', kinds: ['composition', 'associates', 'depends-on', 'implements', 'realizes'] },

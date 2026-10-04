@@ -2,7 +2,7 @@
 // (CLI, kg-web, studio) consumes it. There is no "file-shaped" model object any more —
 // file layout is an implementation detail of the loader / writer.
 
-export type ViewName = 'business' | 'applications'
+export type ViewName = 'business' | 'applications' | 'deployment'
 
 export interface GNode {
   id: string            // opaque id: <prefix>-<seq>, e.g. auc-017
@@ -38,6 +38,7 @@ export interface ModelIndex {
   sequences: Record<string, number>
   business: IndexEntry[]
   applications: IndexEntry[]
+  deployment: IndexEntry[]
 }
 
 export interface Graph {

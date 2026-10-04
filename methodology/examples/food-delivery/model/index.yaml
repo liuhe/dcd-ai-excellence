@@ -10,6 +10,9 @@ sequences:
   met: 6
   ent: 16
   rule: 47
+  ds: 3
+  obs: 3
+  sol: 2
   app: 7
   auc: 31
   vo: 3
@@ -72,6 +75,9 @@ business:
     - { id: ent-009, name: RefundRequest }
 
 applications:
+  solution:
+    - { id: sol-001, name: 订单履约 }
+    - { id: sol-002, name: 售后退款 }
   application:
     - {
         id: app-001,
@@ -252,3 +258,13 @@ applications:
         name: payment-gateway,
         app-use-case: [ { id: auc-030, name: ProcessPayment }, { id: auc-031, name: NotifyPaymentResult } ]
       }
+
+deployment:
+  data-source:
+    - { id: ds-001, name: mysql-orders }
+    - { id: ds-002, name: redis-prod }
+    - { id: ds-003, name: kafka-prod }
+  observability-store:
+    - { id: obs-001, name: prometheus-prod }
+    - { id: obs-002, name: loki-prod }
+    - { id: obs-003, name: clickhouse-dw }

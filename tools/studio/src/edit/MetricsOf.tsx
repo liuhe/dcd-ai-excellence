@@ -6,6 +6,7 @@ import { str } from '../graph/index'
 import { Badge, Card, H3 } from '../components/UI'
 import { Ref } from '../components/Ref'
 import { Picker } from './controls'
+import { grafanaExploreLinks, GrafanaLinks } from '../pages/nodes'
 
 const btn = 'text-xs px-2 py-0.5 rounded border border-slate-200 text-slate-600 hover:bg-slate-50'
 
@@ -24,7 +25,8 @@ export function MetricsOf({ id }: { id: string }) {
       </div>
       {metrics.length === 0 && <div className="text-xs text-slate-300 italic">还没有指标度量这个节点</div>}
       <div className="space-y-1">{metrics.map(x => { const ma = ix.appOf(x.id); const expr = str(ix.data(x.id), 'expression')
-        return (<div key={x.id} className="flex items-center gap-2 text-sm flex-wrap"><span>📈</span><Ref id={x.id} />{ma ? <Badge color="green"><Ref id={ma.id} /></Badge> : <Badge color="purple">业务指标</Badge>}{expr && <span className="text-xs text-slate-400 font-mono truncate max-w-md">{expr.split('\n')[0]}</span>}
+        const src = ix.targets(x.id, 'sourced-from')[0]; const links = src ? grafanaExploreLinks(ix.data(src.id), expr) : []
+        return (<div key={x.id} className="flex items-center gap-2 text-sm flex-wrap"><span>📈</span><Ref id={x.id} />{ma ? <Badge color="green"><Ref id={ma.id} /></Badge> : <Badge color="purple">业务指标</Badge>}{expr && <span className="text-xs text-slate-400 font-mono truncate max-w-md">{expr.split('\n')[0]}</span>}<GrafanaLinks links={links} />
           {canEdit && <button className="text-xs text-slate-300 hover:text-red-600" title="解除关联" onClick={async () => { if (window.confirm(`解除 ${ix.name(x.id)} 对本节点的度量？`)) await m.disconnect(x.id, 'measures', id) }}>✕</button>}
         </div>) })}</div>
       {picking && (

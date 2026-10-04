@@ -55,11 +55,13 @@ describe('loadGraph (7.0)', () => {
 
   it('builds the studio sidebar tree (original structure, index content)', () => {
     const tree = buildTree(g)
-    expect(tree.map(t => t.id)).toEqual(['business', 'applications'])
+    expect(tree.map(t => t.id)).toEqual(['business', 'applications', 'deployment'])
+    expect(tree[2].children!.map(c => c.id)).toEqual(['data-sources', 'observability-stores'])
     expect(tree[0].children!.map(c => c.id)).toEqual(['org-relations', 'business-ucs', 'business-model', 'business-metrics'])
     const org = tree[0].children![0].children![0]
     expect(org.icon).toBe('🏢')
     const apps = tree[1].children!
+    expect(apps[0].id).toBe('solutions')
     const ms = apps.find(a => a.label === 'order-service')!
     expect(ms.children!.map(c => c.id)).toEqual([`app-domain:${ms.id}`, `app-ucs:${ms.id}`, `app-resources:${ms.id}`, `app-metrics:${ms.id}`])
     const ucGroup = ms.children!.find(c => c.id.startsWith('app-ucs:'))!

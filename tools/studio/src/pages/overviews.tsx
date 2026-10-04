@@ -223,3 +223,39 @@ export function AppDomainPage({ appId }: { appId: string }) {
     </div>
   )
 }
+
+// 部署视图总览：数据源（业务数据）与可观测性存储（指标 / 日志 / 链路）
+export function DeploymentOverview() {
+  const { ix } = useGraph()
+  const sources = ix.roots('data-source'), stores = ix.roots('observability-store')
+  return (
+    <div className="space-y-6">
+      <h2 className="text-2xl font-bold text-slate-800">部署视图</h2>
+      <AddRootButtons view="deployment" />
+      <h3 className="text-lg font-bold text-slate-800">数据源</h3>
+      {sources.length === 0 && <p className="text-sm text-slate-400">还没有数据源。资源（表 / 缓存 key / topic / bucket）通过 stored-in 关联到存放它的数据源。</p>}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+        {sources.map(d => { const t = str(ix.data(d.id), 'type'); const ep = str(ix.data(d.id), 'endpoint'); const n = ix.sources(d.id, 'stored-in').length
+          return (
+            <Card key={d.id} compact>
+              <div className="flex items-center gap-2 mb-1"><span>🗄</span><Ref id={d.id} className="font-semibold text-slate-800 hover:underline" />{t && <Badge color="blue">{t}</Badge>}</div>
+              {ep && <div className="text-xs text-slate-500 font-mono">{ep}</div>}
+              <div className="text-xs text-slate-400 mt-1">{n} 个资源</div>
+            </Card>
+          ) })}
+      </div>
+      <h3 className="text-lg font-bold text-slate-800">可观测性存储</h3>
+      {stores.length === 0 && <p className="text-sm text-slate-400">还没有可观测性存储。监控指标通过 sourced-from 关联到它之后，可以直接跳到 Grafana 查看。</p>}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+        {stores.map(d => { const t = str(ix.data(d.id), 'type'); const url = str(ix.data(d.id), 'grafana_url'); const metrics = ix.sources(d.id, 'sourced-from')
+          return (
+            <Card key={d.id} compact>
+              <div className="flex items-center gap-2 mb-1"><span>📡</span><Ref id={d.id} className="font-semibold text-slate-800 hover:underline" />{t && <Badge color="blue">{t}</Badge>}</div>
+              {url && <a href={url} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 hover:underline">{url}</a>}
+              <div className="text-xs text-slate-400 mt-1">{metrics.length} 个指标</div>
+            </Card>
+          ) })}
+      </div>
+    </div>
+  )
+}

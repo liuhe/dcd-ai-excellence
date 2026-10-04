@@ -1,0 +1,21 @@
+observability-store:
+  - id: obs-001
+    name: prometheus-prod
+    type: prometheus
+    grafana_url: https://grafana.quickbite.example
+    grafana_datasource_uid: prom-prod
+    summary: 生产集群指标，各服务通过 /metrics 暴露；长期存储（Thanos）是另一个 datasource
+    ext:
+      grafana_datasource_uid-longterm: thanos-prod
+  - id: obs-002
+    name: loki-prod
+    type: loki
+    grafana_url: https://grafana.quickbite.example
+    grafana_datasource_uid: loki-prod
+    summary: 生产日志
+  - id: obs-003
+    name: clickhouse-dw
+    type: clickhouse
+    grafana_url: https://grafana.quickbite.example
+    grafana_datasource_uid: ch-dw
+    summary: 数仓：订单事实表由 order.events 回放而来

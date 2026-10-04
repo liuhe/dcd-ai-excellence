@@ -1,9 +1,8 @@
 metric:
   - id: met-006
     name: 派单超时数
-    expression: 过去 10 分钟内 Offered → Pending 回退次数
-    ext:
-      data_source: Redis task:{id} 状态变更日志
+    expression: count_over_time({app="dispatch-service"} |= "task offer expired" [10m])
+    store: obs-002
     measures:
       - auc-012
       - ent-015

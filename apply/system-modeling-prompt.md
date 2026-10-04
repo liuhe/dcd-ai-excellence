@@ -96,6 +96,8 @@ business:
     - { id: met-001, name: 下单支付转化率 }
 
 applications:
+  solution:
+    - { id: sol-001, name: 订单履约 }       # 跨应用的关注点处理方案，covers → 用例 / 实体
   application:
     - id: app-001
       name: order-service
@@ -166,7 +168,22 @@ metric:
     name: 下单支付转化率
     expression: Paid 订单数 / Created 订单数，按日
     measures: [buc-001, ent-002]           # measures → 用例（任一层）/ 实体
-    ext: { data_source: ClickHouse 订单事实表, owner: 交易团队 }   # 任意节点都可带 ext 扩展属性
+    store: obs-001                         # sourced-from → 部署视图的可观测性存储
+    ext: { owner: 交易团队 }                 # 任意节点都可带 ext 扩展属性
+
+# deployment/observability-stores.yaml（index.yaml 里列在 deployment: 下）
+observability-store:
+  - id: obs-001
+    name: clickhouse-dw
+    type: clickhouse
+    grafana_url: https://grafana.example.com
+
+# deployment/data-sources.yaml：业务数据的存储；资源用 stored-in 指向它
+data-source:
+  - id: ds-001
+    name: mysql-orders
+    type: mysql
+    endpoint: mysql-orders.internal:3306
 
 # applications/app-001-order-service/use-cases.yaml
 app-use-case:

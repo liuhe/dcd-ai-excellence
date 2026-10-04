@@ -202,6 +202,7 @@ async function defaultDetailFile(root: string, g: Graph, kind: string, parent: G
   let file: string
   if (loc.dir === 'business') file = join(root, 'business', `${loc.file}.yaml`)
   else if (loc.dir === 'applications') file = join(root, 'applications', `${loc.file}.yaml`)
+  else if (loc.dir === 'deployment') file = join(root, 'deployment', `${loc.file}.yaml`)
   else {
     const app = parent?.kind === 'application' ? parent : appAncestor(g, parent)
     if (!app) throw new Error(`${kind} must live under an application`)

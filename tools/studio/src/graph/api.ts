@@ -35,7 +35,7 @@ export const fileUrl = (project: string, rel: string) => staticGraph
 
 // ---- Vocabulary (for editing UIs) ----
 export interface AttrInfo { name: string; type: string }
-export interface NodeKindInfo { kind: string; idPrefix: string; view?: 'business' | 'applications'; parents: string[]; inline: boolean; valueType: boolean; attrs: AttrInfo[]; singleton: boolean; description: string }
+export interface NodeKindInfo { kind: string; idPrefix: string; view?: 'business' | 'applications' | 'deployment'; parents: string[]; inline: boolean; valueType: boolean; attrs: AttrInfo[]; singleton: boolean; description: string }
 export interface RelKindInfo { kind: string; implicit: boolean; edgeAttrs: string[]; description: string; endpoints: { source: string; target: string; shape: string; required: boolean }[] }
 export interface Vocabulary { nodeKinds: NodeKindInfo[]; relKinds: RelKindInfo[] }
 export const fetchVocabulary = () => req<Vocabulary>('/vocabulary')

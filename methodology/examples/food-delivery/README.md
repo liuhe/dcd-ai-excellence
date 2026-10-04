@@ -17,7 +17,10 @@
 - **业务视图**：组织 QuickBite；业务工人（客服、运营）；外部方（顾客、餐厅、骑手、支付机构）与参与者；5 个业务用例，每个带相关方利益；系统 QuickBitePlatform 及 11 个系统用例，追溯到各应用的入口用例
 - **业务模型**：9 个业务实体，四色原型齐全（role / description / moment-interval / mi-detail），订单、支付、配送、骑手、餐厅都有状态机，规则内联
 - **应用视图**：7 个应用。两个后端（order-service、dispatch-service）有完整领域模型：聚合根 Order 嵌套 OrderLine 与值对象、枚举、Role、领域服务、领域事件，实体 `realizes` 业务实体；四个前端（顾客 App、商家后台、骑手 App、运营后台）有页面与用例，跨应用 `includes` 到后端用例；payment-gateway 是外部系统
+- **方案**：2 个跨应用的关注点处理方案（订单履约、售后退款），`covers` 指向各应用的用例与实体，studio 画按应用分簇的用例图和实体关系图
 - **技术资源**：后端用例 `exposes` API；实体 `uses` 表、缓存 key、Kafka topic（read / write / publish / subscribe）
+- **监控**：6 个指标（3 个业务 KPI、3 个技术指标），`measures` 指向用例 / 实体，`sourced-from` 指向部署视图里的 3 个可观测性存储（Prometheus / Loki / ClickHouse），带 Grafana 站点，studio 上一键跳到 Grafana Explore
+- **部署视图**：3 个数据源（MySQL / Redis / Kafka），表、缓存 key、topic 这些资源用 `stored-in` 指向存放它的数据源
 - **拓扑与部署**：`applications.yaml` 的 `topology` 描述应用间调用与事件流；`deployment.yaml` 描述运行节点与网络
 
 ## 怎么用

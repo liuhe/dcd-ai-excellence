@@ -4,7 +4,7 @@ import { readdir, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import { loadGraph } from './loader.ts'
 import { nodeReader, type ModelReader } from './reader.ts'
-import { NODE_KINDS, REL_KINDS, VALUE_TYPE_PRIMITIVES, RESOURCE_TYPES, USES_MODES, USES_MODES_BY_RESOURCE_TYPE, kindOfId, type RelKindSpec } from './vocabulary.ts'
+import { NODE_KINDS, REL_KINDS, VALUE_TYPE_PRIMITIVES, RESOURCE_TYPES, USES_MODES, USES_MODES_BY_RESOURCE_TYPE, kindOfId, type RelKindSpec, DATA_SOURCE_TYPES, OBSERVABILITY_STORE_TYPES } from './vocabulary.ts'
 import type { Graph, GNode, GEdge, LoadWarning } from './types.ts'
 
 export interface Finding {
@@ -95,6 +95,14 @@ export async function validateModel(root: string, reader: ModelReader = nodeRead
     const t = graph.nodesData[n.id]?.type
     if (t !== undefined && !(RESOURCE_TYPES as readonly string[]).includes(String(t))) {
       findings.push({ severity: 'warning', code: 'attr-value', nodeId: n.id, file: n.file, message: `${n.id} (${n.name}): resource type "${String(t)}" is not one of ${RESOURCE_TYPES.join(' / ')}` })
+    }
+  }
+  const TYPE_SETS: Record<string, readonly string[]> = { 'data-source': DATA_SOURCE_TYPES, 'observability-store': OBSERVABILITY_STORE_TYPES }
+  for (const n of graph.nodes) {
+    const allowed = TYPE_SETS[n.kind]; if (!allowed) continue
+    const t = graph.nodesData[n.id]?.type
+    if (t !== undefined && !allowed.includes(String(t))) {
+      findings.push({ severity: 'warning', code: 'attr-value', nodeId: n.id, file: n.file, message: `${n.id} (${n.name}): ${n.kind} type "${String(t)}" is not one of ${allowed.join(' / ')}` })
     }
   }
   // Edge endpoint kinds must be allowed by the vocabulary (stale data after a rel's endpoints change)

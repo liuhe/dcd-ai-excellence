@@ -9,9 +9,9 @@ detail entries live in flat per-kind files under `business/` and `applications/`
 
 ## Index
 
-**Node kinds** (19): `organization` · `business-worker` · `external-party` · `participant` · `business-use-case` · `system` · `system-use-case` · `application` · `app-use-case` · `page` · `resource` · `metric` · `entity` · `value-object` · `enum` · `role` · `domain-service` · `domain-event` · `rule`
+**Node kinds** (22): `organization` · `business-worker` · `external-party` · `participant` · `business-use-case` · `system` · `system-use-case` · `application` · `app-use-case` · `page` · `resource` · `solution` · `observability-store` · `data-source` · `metric` · `entity` · `value-object` · `enum` · `role` · `domain-service` · `domain-event` · `rule`
 
-**Rel kinds** (29): `has-uc` · `has-page` · `has-participant` · `has-role` · `has-domain-service` · `has-domain-event` · `has-entity` · `has-value-type` · `has-metric` · `has-resource` · `aggregates` · `has-rule` · `provides` · `has-actor` · `uses` · `measures` · `exposes` · `has-entry` · `references` · `includes` · `extends` · `composition` · `associates` · `depends-on` · `implements` · `realizes` · `emits` · `handles` · `transitions-to`
+**Rel kinds** (32): `has-uc` · `has-page` · `has-participant` · `has-role` · `has-domain-service` · `has-domain-event` · `has-entity` · `has-value-type` · `has-metric` · `has-resource` · `aggregates` · `has-rule` · `provides` · `has-actor` · `uses` · `covers` · `sourced-from` · `stored-in` · `measures` · `exposes` · `has-entry` · `references` · `includes` · `extends` · `composition` · `associates` · `depends-on` · `implements` · `realizes` · `emits` · `handles` · `transitions-to`
 
 **Value-type kinds**: primitives (built-in), `free-text` (escape hatch), `value-object` · `enum` (user-defined nodes)
 
@@ -330,9 +330,59 @@ Rule — a natural-language constraint attached to a use case or entity (inline 
   | `content` | `free-text` |
   | `field` | `String` |
 
+#### `solution`
+
+Solution — how one concern is handled across the application layer (e.g. an entity's lifecycle): a named set of app use cases and entities from any application. Studio draws its use case diagram and entity diagram
+
+- **Id**: `sol-<seq>`
+- **Placement**: top of `applications` view
+- **Storage**:
+  - index.yaml: applications.solution[]
+  - Detail: applications/solutions.yaml → solution[]
+- **Attrs**:
+
+  | Name | Type |
+  |------|------|
+  | `summary` | `free-text` |
+
+#### `observability-store`
+
+Observability store — where metrics, logs or traces live (prometheus / loki / elasticsearch / clickhouse / tempo / …), in the deployment view. Metrics are sourced from it; with a Grafana URL the studio deep-links a metric's expression into Grafana Explore
+
+- **Id**: `obs-<seq>`
+- **Placement**: top of `deployment` view
+- **Storage**:
+  - index.yaml: deployment.observability-store[]
+  - Detail: applications/<app-id>-<app-name>/observability-stores.yaml → observability-store[]
+- **Attrs**:
+
+  | Name | Type |
+  |------|------|
+  | `type` | `String` |
+  | `grafana_url` | `String` |
+  | `grafana_datasource_uid` | `String` |
+  | `summary` | `free-text` |
+
+#### `data-source`
+
+Data source — a store that holds business data (mysql / postgres / redis / kafka / mongodb / s3 / …), in the deployment view. Resources (tables, cache keys, topics, buckets) are stored in it
+
+- **Id**: `ds-<seq>`
+- **Placement**: top of `deployment` view
+- **Storage**:
+  - index.yaml: deployment.data-source[]
+  - Detail: applications/<app-id>-<app-name>/data-sources.yaml → data-source[]
+- **Attrs**:
+
+  | Name | Type |
+  |------|------|
+  | `type` | `String` |
+  | `endpoint` | `String` |
+  | `summary` | `free-text` |
+
 #### `metric`
 
-Metric — a monitoring metric or KPI: a name and an expression. Business-level at the top of the business view, technical under an application. `measures` points at the use cases / entities it observes; anything else (data source, owner, alert) goes in `ext`
+Metric — a monitoring metric or KPI: a name and an expression. Business-level at the top of the business view, technical under an application. `measures` points at the use cases / entities it observes; `sourced-from` names the observability store the expression runs against
 
 - **Id**: `met-<seq>`
 - **Placement**: top of `business` view or under `application`
@@ -616,6 +666,43 @@ Metric observes a use case (any layer) or an entity
   - `metric` → `entity`
     - Stored on source entry at `measures` — target value is the target node id
     - Shape: string list. Example: `measures: [ent-003]`
+
+#### `sourced-from`
+
+Metric is computed against an observability store (its expression runs there)
+
+- **Edge attrs**: _(none — endpoints only)_
+- **Endpoints**:
+  - `metric` → `observability-store`
+    - Stored on source entry at `store` — target value is the target node id
+    - Shape: scalar — at most one edge of this kind per source. Example: `store: obs-001`
+
+### Deployment
+
+#### `stored-in`
+
+Resource (table / cache-key / topic / queue / file / bucket) lives in a data source
+
+- **Edge attrs**: _(none — endpoints only)_
+- **Endpoints**:
+  - `resource` → `data-source`
+    - Stored on source entry at `store` — target value is the target node id
+    - Shape: scalar — at most one edge of this kind per source. Example: `store: ds-001`
+
+### Solution
+
+#### `covers`
+
+Solution covers an app use case or an entity
+
+- **Edge attrs**: _(none — endpoints only)_
+- **Endpoints**:
+  - `solution` → `app-use-case`
+    - Stored on source entry at `covers` — target value is the target node id
+    - Shape: string list. Example: `covers: [auc-001]`
+  - `solution` → `entity`
+    - Stored on source entry at `covers` — target value is the target node id
+    - Shape: string list. Example: `covers: [ent-003]`
 
 ### Reference
 

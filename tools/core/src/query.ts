@@ -5,7 +5,7 @@
 // index.yaml (ids, order, packages, aggregate nesting). Tree ids double as studio routes:
 //   view / group ids: 'business', 'org-relations', 'workers', 'business-ucs', 'business-model',
 //                     'business-metrics', 'applications', 'app-domain:<appId>', 'app-pages:<appId>', 'app-ucs:<appId>',
-//                     'app-resources:<appId>', 'app-metrics:<appId>'
+//                     'app-resources:<appId>', 'app-metrics:<appId>', 'solutions', 'deployment', 'data-sources', 'observability-stores'
 //   package folders:  'pkg:<scope>:<path>'
 //   nodes:            the node id
 
@@ -70,8 +70,10 @@ export function buildTree(g: Graph): TreeNode[] {
 
   // ---- 应用视图 ----
   const apps = g.index.applications.filter(e => e.kind === 'application')
+  const solutions = g.index.applications.filter(e => e.kind === 'solution')
+  const solutionGroup: TreeNode[] = solutions.length ? [{ id: 'solutions', label: '方案', icon: '🧩', children: solutions.map(t => ({ id: t.id, label: t.name, icon: '🧩' })) }] : []
   const applications: TreeNode = {
-    id: 'applications', label: '应用视图', icon: '🏗️', children: apps.map(app => {
+    id: 'applications', label: '应用视图', icon: '🏗️', children: [...solutionGroup, ...apps.map(app => {
       const ucs = kids(app, 'app-use-case')
       const pages = kids(app, 'page')
       const resources = kids(app, 'resource')
@@ -107,10 +109,21 @@ export function buildTree(g: Graph): TreeNode[] {
       if (resources.length) children.push({ id: `app-resources:${app.id}`, label: '资源', icon: '🔌', children: packageTree(`app-resources:${app.id}`, resources, r => ({ id: r.id, label: r.name, icon: '🔌', tag: (data(r.id).type as string | undefined) ?? undefined })) })
       if (metrics.length) children.push({ id: `app-metrics:${app.id}`, label: '指标', icon: '📈', children: metrics.map(m => ({ id: m.id, label: m.name, icon: '📈' })) })
       return { id: app.id, label: app.name, icon: '▸', tag: (data(app.id).type as string | undefined) ?? undefined, children }
-    }),
+    })],
   }
 
-  return [business, applications]
+  // ---- 部署视图（只在有部署节点时出现，保持无部署节点的模型侧边栏原样）----
+  const dsRoots = g.index.deployment.filter(e => e.kind === 'data-source')
+  const obsRoots = g.index.deployment.filter(e => e.kind === 'observability-store')
+  if (dsRoots.length === 0 && obsRoots.length === 0) return [business, applications]
+  const typed = (icon: string) => (d: IndexEntry): TreeNode => ({ id: d.id, label: d.name, icon, tag: (data(d.id).type as string | undefined) ?? undefined })
+  const deployment: TreeNode = {
+    id: 'deployment', label: '部署视图', icon: '🖧', children: [
+      ...(dsRoots.length ? [{ id: 'data-sources', label: '数据源', icon: '🗄', children: dsRoots.map(typed('🗄')) }] : []),
+      ...(obsRoots.length ? [{ id: 'observability-stores', label: '可观测性存储', icon: '📡', children: obsRoots.map(typed('📡')) }] : []),
+    ],
+  }
+  return [business, applications, deployment]
 }
 
 // Entries → tree nodes, folding package paths into 📦 folders (multi-level).

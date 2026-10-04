@@ -4,7 +4,7 @@ import { str, strs, list, obj, fieldList, type Data } from '../graph/index'
 import { Badge, Card, H3, DocsSection, Empty } from '../components/UI'
 import { Ref, GroupRef } from '../components/Ref'
 import { MD } from '../components/MD'
-import { SystemUseCaseDiagram, AppUseCaseDiagram, SystemDetailDiagram, AppDetailDiagram } from '../diagrams/UseCaseDiagrams'
+import { SystemUseCaseDiagram, AppUseCaseDiagram, SystemDetailDiagram, AppDetailDiagram, SolutionUseCaseDiagram } from '../diagrams/UseCaseDiagrams'
 import { StateMachineDiagram } from '../diagrams/StateMachineDiagram'
 import { EntityRelDiagram } from '../diagrams/EntityRelDiagram'
 import { FieldsTable, StateMachineCard, AppUCTree, APP_TYPE_COLORS, partyIcon, participantIcon, groupByPackage, PackageCard, RuleList, RuleItem } from './shared'
@@ -57,6 +57,9 @@ function KindPage({ id, kind }: { id: string; kind: string }) {
     case 'page': return <PagePage id={id} />
     case 'resource': return <ResourcePage id={id} />
     case 'metric': return <MetricPage id={id} />
+    case 'solution': return <SolutionPage id={id} />
+    case 'data-source': return <DataSourcePage id={id} />
+    case 'observability-store': return <ObservabilityStorePage id={id} />
     case 'app-use-case': return <AucPage id={id} />
     case 'role': return <RolePage id={id} />
     case 'value-object': return <VoPage id={id} />
@@ -543,11 +546,135 @@ function EntityResources({ id }: { id: string }) {
   )
 }
 
-// 指标页：表达式 / 数据来源 / 度量对象
+// 方案页：覆盖的应用用例（用例图，按应用分簇）与实体（关系图）
+function SolutionPage({ id }: { id: string }) {
+  const { ix, canEdit } = useGraph()
+  const d = ix.data(id)
+  const covered = ix.targets(id, 'covers')
+  const ucs = covered.filter(n => n.kind === 'app-use-case'), ents = covered.filter(n => n.kind === 'entity')
+  const entSet = new Set(ents.map(e => e.id))
+  const rels = ents.flatMap(e => DDD_RELS.flatMap(rel => ix.outEdges(e.id, rel).filter(x => entSet.has(x.to)).map(x => ({ from: e.id, to: x.to, type: String(x.attrs?.cardinality ?? rel), via: x.attrs?.via ? String(x.attrs.via) : undefined }))))
+  const byApp = new Map<string, typeof ucs>()
+  for (const u of ucs) { const k = ix.appOf(u.id)?.id ?? ''; byApp.set(k, [...(byApp.get(k) ?? []), u]) }
+  return (
+    <div className="space-y-4">
+      <h2 className="text-2xl font-bold text-slate-800">🧩 {ix.name(id)}</h2>
+      <EditToolbar id={id} />
+      <div className="flex gap-2"><Badge color="gray">方案</Badge><span className="text-xs text-slate-400">{ucs.length} 个用例 · {ents.length} 个实体 · 跨 {byApp.size} 个应用</span></div>
+      {str(d, 'summary') && <p className="text-slate-600">{str(d, 'summary')}</p>}
+      <AttrsCard id={id} />
+      <SolutionUseCaseDiagram solutionId={id} />
+      {ents.length > 0 && <EntityRelDiagram relationships={rels} extraIds={ents.map(e => e.id)} title="实体关系图" />}
+      {!canEdit && ucs.length > 0 && (
+        <Card><H3>覆盖的用例 ({ucs.length})</H3>
+          <div className="space-y-3">{[...byApp.entries()].map(([appId, list]) => (
+            <div key={appId}>{appId && <div className="text-xs font-semibold text-slate-500 mb-1"><Ref id={appId} /></div>}
+              <div className="space-y-1">{list.map(u => { const actor = ix.targets(u.id, 'has-actor')[0]; return (<div key={u.id} className="flex items-center gap-2 text-sm"><span>◦</span><Ref id={u.id} />{actor && <span className="text-xs text-slate-400">(<Ref id={actor.id} />)</span>}{u.package && <Badge color="gray">{u.package}</Badge>}</div>) })}</div>
+            </div>))}</div>
+        </Card>
+      )}
+      {!canEdit && ents.length > 0 && (
+        <Card><H3>覆盖的实体 ({ents.length})</H3>
+          <div className="space-y-1">{ents.map(e => { const ea = ix.appOf(e.id); const arch = str(ix.data(e.id), 'archetype')
+            return (<div key={e.id} className="flex items-center gap-2 text-sm flex-wrap"><span>{ix.isAggregateRoot(e.id) ? '◆' : '▪'}</span><Ref id={e.id} />{ea ? <Badge color="green"><Ref id={ea.id} /></Badge> : <Badge color="purple">业务实体</Badge>}{arch && <Badge color="gray">{arch}</Badge>}</div>) })}</div>
+        </Card>
+      )}
+    </div>
+  )
+}
+
+// Grafana Explore 深链：把指标表达式带进可观测性存储对应的 Grafana。没有 grafana_url 返回空串。
+export function grafanaExploreUrl(ds: Data, expression: string, uidOverride?: string): string {
+  const base = str(ds, 'grafana_url').replace(/\/+$/, '')
+  if (!base) return ''
+  const uid = uidOverride ?? str(ds, 'grafana_datasource_uid'); const type = str(ds, 'type')
+  const query: Record<string, unknown> = { refId: 'A', ...(type === 'elasticsearch' ? { query: expression } : { expr: expression }) }
+  if (uid) query.datasource = { uid }
+  const pane: Record<string, unknown> = { queries: [query], range: { from: 'now-1h', to: 'now' } }
+  if (uid) pane.datasource = uid
+  return `${base}/explore?schemaVersion=1&orgId=1&panes=${encodeURIComponent(JSON.stringify({ a: pane }))}`
+}
+
+// 隐含扩展：可观测性存储的 ext 里每个 `grafana_datasource_uid-<后缀>` 键再给一个链接（同一 Grafana、不同 datasource），
+// 后缀作为链接标签。主链接标签为 "Grafana"。
+export function grafanaExploreLinks(ds: Data, expression: string): { label: string; url: string }[] {
+  const links: { label: string; url: string }[] = []
+  const main = grafanaExploreUrl(ds, expression)
+  if (main) links.push({ label: 'Grafana', url: main })
+  const ext = ds.ext
+  if (ext && typeof ext === 'object' && !Array.isArray(ext)) {
+    for (const [k, v] of Object.entries(ext as Record<string, unknown>)) {
+      const m = /^grafana_datasource_uid-(.+)$/.exec(k)
+      if (!m || typeof v !== 'string' || !v) continue
+      const url = grafanaExploreUrl(ds, expression, v)
+      if (url) links.push({ label: `Grafana · ${m[1]}`, url })
+    }
+  }
+  return links
+}
+
+export function GrafanaLinks({ links, button }: { links: { label: string; url: string }[]; button?: boolean }) {
+  if (links.length === 0) return null
+  const cls = button ? 'ml-2 text-xs px-2 py-0.5 rounded border border-orange-200 bg-orange-50 text-orange-700 hover:bg-orange-100' : 'text-xs text-orange-600 hover:underline'
+  return <>{links.map(l => <a key={l.label} href={l.url} target="_blank" rel="noopener noreferrer" className={cls}>{button ? `在 ${l.label} 中查看 ↗` : `${l.label} ↗`}</a>)}</>
+}
+
+// 数据源页：类型 / 端点 / 存放的资源（按应用分组）
+function DataSourcePage({ id }: { id: string }) {
+  const { ix, canEdit } = useGraph()
+  const d = ix.data(id); const t = str(d, 'type'); const ep = str(d, 'endpoint')
+  const resources = ix.sources(id, 'stored-in')
+  const byApp = new Map<string, typeof resources>()
+  for (const r of resources) { const k = ix.appOf(r.id)?.id ?? ''; byApp.set(k, [...(byApp.get(k) ?? []), r]) }
+  return (
+    <div className="space-y-4">
+      <h2 className="text-2xl font-bold text-slate-800">🗄 {ix.name(id)}</h2>
+      <EditToolbar id={id} />
+      <div className="flex gap-2 items-center flex-wrap"><Badge color="gray">数据源</Badge>{t && <Badge color="blue">{t}</Badge>}{ep && <span className="text-xs text-slate-500 font-mono">{ep}</span>}</div>
+      {str(d, 'summary') && <p className="text-slate-600">{str(d, 'summary')}</p>}
+      <AttrsCard id={id} />
+      {!canEdit && resources.length > 0 && (
+        <Card><H3>存放的资源 ({resources.length})</H3>
+          <div className="space-y-3">{[...byApp.entries()].map(([appId, list]) => (
+            <div key={appId}>{appId && <div className="text-xs font-semibold text-slate-500 mb-1"><Ref id={appId} /></div>}
+              <div className="space-y-1">{list.map(r => { const rt = str(ix.data(r.id), 'type'); return (<div key={r.id} className="flex items-center gap-2 text-sm"><span>🔌</span><Ref id={r.id} />{rt && <Badge color={RES_COLORS[rt] || 'gray'}>{rt}</Badge>}</div>) })}</div>
+            </div>))}</div>
+        </Card>
+      )}
+    </div>
+  )
+}
+
+// 可观测性存储页：类型 / Grafana / 取数的指标
+function ObservabilityStorePage({ id }: { id: string }) {
+  const { ix, canEdit } = useGraph()
+  const d = ix.data(id); const t = str(d, 'type'); const url = str(d, 'grafana_url')
+  const metrics = ix.sources(id, 'sourced-from')
+  return (
+    <div className="space-y-4">
+      <h2 className="text-2xl font-bold text-slate-800">📡 {ix.name(id)}</h2>
+      <EditToolbar id={id} />
+      <div className="flex gap-2 items-center flex-wrap"><Badge color="gray">可观测性存储</Badge>{t && <Badge color="blue">{t}</Badge>}</div>
+      {str(d, 'summary') && <p className="text-slate-600">{str(d, 'summary')}</p>}
+      <AttrsCard id={id} />
+      {url && <Card><H3>Grafana</H3><a href={url} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-600 hover:underline">{url} ↗</a>{str(d, 'grafana_datasource_uid') && <span className="ml-3 text-xs text-slate-400 font-mono">datasource uid: {str(d, 'grafana_datasource_uid')}</span>}</Card>}
+      {!canEdit && metrics.length > 0 && (
+        <Card><H3>取数的指标 ({metrics.length})</H3>
+          <div className="space-y-1">{metrics.map(m => { const ma = ix.appOf(m.id); const links = grafanaExploreLinks(d, str(ix.data(m.id), 'expression'))
+            return (<div key={m.id} className="flex items-center gap-2 text-sm flex-wrap"><span>📈</span><Ref id={m.id} />{ma ? <Badge color="green"><Ref id={ma.id} /></Badge> : <Badge color="purple">业务指标</Badge>}<GrafanaLinks links={links} /></div>) })}</div>
+        </Card>
+      )}
+    </div>
+  )
+}
+
+// 指标页：表达式 / 可观测性存储 / 度量对象
 function MetricPage({ id }: { id: string }) {
   const { ix, baseFor, canEdit } = useGraph()
   const d = ix.data(id); const app = ix.appOf(id)
   const targets = ix.targets(id, 'measures')
+  const source = ix.targets(id, 'sourced-from')[0]
+  const grafana = source ? grafanaExploreLinks(ix.data(source.id), str(d, 'expression')) : []
   return (
     <div className="space-y-4">
       <h2 className="text-2xl font-bold text-slate-800">📈 {ix.name(id)}</h2>
@@ -556,6 +683,13 @@ function MetricPage({ id }: { id: string }) {
       {str(d, 'summary') && <p className="text-slate-600">{str(d, 'summary')}</p>}
       <AttrsCard id={id} />
       {str(d, 'expression') && <Card><H3>表达式</H3><pre className="text-sm text-slate-700 whitespace-pre-wrap font-mono bg-slate-50 rounded p-2 border border-slate-100"><MD basePath={baseFor(id)}>{str(d, 'expression')}</MD></pre></Card>}
+      {source && (
+        <Card><H3>可观测性存储</H3>
+          <div className="flex items-center gap-2 text-sm flex-wrap"><span>📡</span><Ref id={source.id} />{str(ix.data(source.id), 'type') && <Badge color="blue">{str(ix.data(source.id), 'type')}</Badge>}
+            <GrafanaLinks links={grafana} button />
+          </div>
+        </Card>
+      )}
       {!canEdit && targets.length > 0 && (
         <Card><H3>度量对象 ({targets.length})</H3>
           <div className="space-y-1">{targets.map(t => { const ta = ix.appOf(t.id); return (<div key={t.id} className="flex items-center gap-2 text-sm flex-wrap"><span>{KIND_ICONS[t.kind] ?? '•'}</span><Ref id={t.id} /><Badge color="blue">{KIND_LABELS[t.kind] ?? t.kind}</Badge>{ta && <Badge color="green"><Ref id={ta.id} /></Badge>}</div>) })}</div>
@@ -609,11 +743,12 @@ function ResourcePage({ id }: { id: string }) {
   const d = ix.data(id); const app = ix.appOf(id); const t = str(d, 'type')
   const implementers = ix.sources(id, 'exposes')
   const users = ix.inEdges(id, 'uses')
+  const store = ix.targets(id, 'stored-in')[0]
   return (
     <div className="space-y-4">
       <h2 className="text-2xl font-bold text-slate-800">🔌 {ix.name(id)}</h2>
       <EditToolbar id={id} />
-      <div className="flex gap-2 items-center flex-wrap">{app && <Badge color="green"><Ref id={app.id} /></Badge>}<Badge color="gray">资源</Badge>{t && <Badge color={RES_COLORS[t] || 'gray'}>{t}</Badge>}</div>
+      <div className="flex gap-2 items-center flex-wrap">{app && <Badge color="green"><Ref id={app.id} /></Badge>}<Badge color="gray">资源</Badge>{t && <Badge color={RES_COLORS[t] || 'gray'}>{t}</Badge>}{store && (<><span className="text-xs text-slate-500">存放于:</span><Badge color="amber"><Ref id={store.id} /></Badge></>)}</div>
       {str(d, 'summary') && <p className="text-slate-600">{str(d, 'summary')}</p>}
       <AttrsCard id={id} />
       {str(d, 'spec') && <Card><H3>规格</H3><div className="text-sm text-slate-700"><MD basePath={baseFor(id)}>{str(d, 'spec')}</MD></div></Card>}

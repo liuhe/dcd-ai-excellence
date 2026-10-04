@@ -425,10 +425,11 @@ dcddp connect entity:ClaudeSession --rel uses --to resource:session.events --set
 
 ## 11.6 监控指标（metric）
 
-指标故意做得很小：一个名字、一个 `expression`（怎么算：PromQL / SQL / 口径），再加一条 `measures` 边指向它度量的用例（任一层）或实体。数据来源、负责人、告警阈值这些放 `ext`（见 §11.7）。业务指标 / KPI 放业务视图根（`business/metrics.yaml`），技术指标挂在拥有它的应用下（`applications/<app>/metrics.yaml`），和实体的双层放置同一套规则。
+指标故意做得很小：一个名字、一个 `expression`（怎么算：PromQL / SQL / 口径），一条 `measures` 边指向它度量的用例（任一层）或实体，一条 `sourced-from` 边指向表达式在哪个可观测性存储上跑（见 §11.9）。负责人、告警阈值这些放 `ext`（见 §11.7）。业务指标 / KPI 放业务视图根（`business/metrics.yaml`），技术指标挂在拥有它的应用下（`applications/<app>/metrics.yaml`），和实体的双层放置同一套规则。
 
 ```bash
-dcddp add-node metric 下单支付转化率 --set expression="Paid 订单数 / Created 订单数，按日" --set ext.data_source=ClickHouse
+dcddp add-node metric 下单支付转化率 --set expression="Paid 订单数 / Created 订单数，按日"
+dcddp connect metric:下单支付转化率 --rel sourced-from --to observability-store:clickhouse-dw
 dcddp connect metric:下单支付转化率 --rel measures --to business-use-case:OrderMeal
 dcddp add-node metric "CreateOrder p99 latency" --parent application:order-service --set expression="histogram_quantile(0.99, …)"
 dcddp connect "metric:CreateOrder p99 latency" --rel measures --to app-use-case:CreateOrder
@@ -439,6 +440,36 @@ dcddp connect "metric:CreateOrder p99 latency" --rel measures --to app-use-case:
 ## 11.7 扩展属性（ext）
 
 任何节点条目都可以带一个 `ext` map，放 vocabulary 没有建模的工程私有信息：负责人、工单号、SLA、数据源……工具原样保存，`validate` 只检查它是个 map，studio 只读展示、按 JSON 编辑，CLI 用 `--set ext.owner=交易团队` 写单个键。跨工程都用得上的键，再升格进 vocabulary。
+
+## 11.8 方案（solution）
+
+应用按部署单元切分系统，方案按关注点切分：某个实体的生命周期怎么处理、某条业务流程怎么走，"订单履约"横跨 order-service、dispatch-service 和骑手 App。方案是应用视图的根节点（`applications/solutions.yaml`），只有一条 `covers` 边指向任意应用的用例和实体（业务实体也可以）。它不拥有、不改变被覆盖的节点，只是一个命名的切片；studio 把覆盖的用例画成按应用分簇的用例图，把覆盖的实体连同它们之间的 DDD 关系画成实体关系图。
+
+```bash
+dcddp add-node solution 订单履约 --set summary="从支付成功到送达"
+dcddp connect solution:订单履约 --rel covers --to app-use-case:ConfirmPayment
+dcddp connect solution:订单履约 --rel covers --to entity:order-service/Order
+```
+
+## 11.9 部署视图：数据源（data-source）与可观测性存储（observability-store）
+
+部署视图的头两个节点 kind，index.yaml 里列在 `deployment:` 下，细节在 `deployment/` 目录；模型根目录的自由结构 `deployment.yaml` 不受影响。
+
+| kind | 装什么 | type | 谁指向它 |
+|---|---|---|---|
+| `data-source` | 业务数据：mysql / postgres / redis / kafka / rabbitmq / mongodb / elasticsearch / clickhouse / s3 / oss | 封闭集，`endpoint` 自由文本 | 资源 `stored-in`：表在哪个 MySQL、缓存 key 在哪个 Redis、topic 在哪个 Kafka |
+| `observability-store` | 指标 / 日志 / 链路：prometheus / loki / elasticsearch / clickhouse / tempo / mysql / postgres | 封闭集，另有 `grafana_url`、`grafana_datasource_uid` | 指标 `sourced-from` |
+
+分成两个 kind 是因为角色不同：存订单的 MySQL 和存延迟序列的 Prometheus 在模型里回答的是两个问题，哪怕同一个产品（ClickHouse、Elasticsearch）两边都能用。
+
+有了 `grafana_url`，studio 会把指标的 `expression` 拼成 Grafana Explore 深链，用例页、实体页、指标页上一键跳过去看实时图。隐含的 ext 约定：可观测性存储的 `ext` 里每个 `grafana_datasource_uid-<后缀>` 键再多给一个链接（同一 Grafana、换那个 datasource），后缀作标签，比如 `grafana_datasource_uid-longterm` 指向长期存储的 datasource。
+
+```bash
+dcddp add-node data-source mysql-orders --set type=mysql --set endpoint=mysql-orders.internal:3306
+dcddp connect resource:t_order --rel stored-in --to data-source:mysql-orders
+dcddp add-node observability-store prometheus-prod --set type=prometheus --set grafana_url=https://grafana.example.com --set grafana_datasource_uid=prom-prod
+dcddp connect "metric:CreateOrder p99 延迟" --rel sourced-from --to observability-store:prometheus-prod
+```
 
 ## 12. 统一关系模型（Relationships）
 

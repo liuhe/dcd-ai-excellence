@@ -38,7 +38,7 @@
 # else is detail.
 #
 #   model/
-#   ├── index.yaml                      # every node: id + name; nesting = containment; packages
+#   ├── index.yaml                      # every node: id + name; nesting = containment; packages (business / applications / deployment)
 #   ├── business/                       # business-view detail entries (flat, keyed by id)
 #   │   ├── actors.yaml                 #   organization / business-worker / external-party / participant
 #   │   ├── business-use-cases.yaml     #   business-use-case
@@ -125,6 +125,8 @@ index_yaml_schema:
       - { id: ent-001, name: string }
 
   applications:
+    solution:                               # how one concern is handled across apps (SCHEMA NOTE 21)
+      - { id: sol-001, name: string }
     application:
       - id: app-001
         name: string
@@ -261,6 +263,14 @@ detail_entry_schemas:
           related_use_cases: [auc-001]      # (edge) references → app-use-case
       docs: [{ name: string, type: image | article, path: string }]
 
+  # ---- applications/solutions.yaml ----
+  solution:                                 # a named set of app use cases + entities, any application (SCHEMA NOTE 21)
+    - id: sol-001
+      name: string                          # e.g. "订单履约", "售后退款"
+      summary: string
+      covers: [auc-001, auc-012, ent-020]   # (edge) covers → app-use-case | entity
+      ext: { owner: string }
+
   # ---- applications/applications.yaml ----
   application:
     - id: app-001
@@ -310,6 +320,24 @@ detail_entry_schemas:
       type: api | topic | table | cache-key | queue | file | bucket
       spec: string                          # path + method / key pattern / schema summary (markdown ok)
       summary: string
+      store: ds-001                         # (edge) stored-in → data-source (deployment view); not for api
+
+  # ---- deployment/data-sources.yaml ----
+  data-source:                              # store holding business data (SCHEMA NOTE 22)
+    - id: ds-001
+      name: string                          # e.g. "mysql-orders", "redis-prod", "kafka-prod"
+      type: mysql | postgres | redis | kafka | rabbitmq | mongodb | elasticsearch | clickhouse | s3 | oss
+      endpoint: string                      # host / dsn / cluster name, free text
+      summary: string
+
+  # ---- deployment/observability-stores.yaml ----
+  observability-store:                      # where metrics / logs / traces live (SCHEMA NOTE 22)
+    - id: obs-001
+      name: string                          # e.g. "prometheus-prod"
+      type: prometheus | loki | elasticsearch | clickhouse | tempo | mysql | postgres
+      grafana_url: string                   # Grafana site that fronts it; enables deep links from metrics
+      grafana_datasource_uid: string        # uid of the matching Grafana datasource (optional, sharpens the link)
+      summary: string
 
   # ---- business/metrics.yaml  |  applications/<app>/metrics.yaml ----
   metric:                                   # same shape in both places (SCHEMA NOTE 20)
@@ -318,7 +346,8 @@ detail_entry_schemas:
       expression: string                    # how it is computed: PromQL / SQL / 口径, free text
       summary: string
       measures: [buc-001, ent-002]          # (edge) measures → use case (any layer) or entity
-      ext: { data_source: string }          # any entry may carry an ext map — see NOTE 20
+      store: obs-001                        # (edge) sourced-from → observability-store (deployment view)
+      ext: { owner: string }                # any entry may carry an ext map — see NOTE 20
 
   # ---- applications/<app>/pages.yaml ----
   page:
@@ -705,9 +734,10 @@ deployment_yaml_schema:
 
 # 20. METRICS AND EXTENSION ATTRIBUTES
 #
-#    `metric` is deliberately small: a name, an `expression` (how it is computed) and a
-#    `measures` edge to the use cases / entities it observes. Data source, owner, alert
-#    threshold and the like are `ext` keys, not attrs. Business KPIs
+#    `metric` is deliberately small: a name, an `expression` (how it is computed), a
+#    `measures` edge to the use cases / entities it observes and a `sourced-from` edge to the
+#    data source the expression runs against (NOTE 22). Owner, alert threshold and the like
+#    are `ext` keys, not attrs. Business KPIs
 #    sit at the top of the business view (business/metrics.yaml); technical metrics nest under
 #    the application that owns them (applications/<app>/metrics.yaml). No alerting, no metric →
 #    metric derivation: add them to `ext` until a real need shows up.
@@ -717,3 +747,35 @@ deployment_yaml_schema:
 #    `validate` only checks that it is a map, studio shows it read-only and edits it as JSON,
 #    `dcddp update-node X --set ext.owner=…` writes one key. Anything that turns out to be shared
 #    across projects graduates from `ext` into the vocabulary.
+
+# 21. SOLUTIONS — HOW ONE CONCERN IS HANDLED ACROSS THE APPLICATION LAYER
+#
+#    Applications slice the system by deployment unit; a `solution` slices it by concern —
+#    an entity's lifecycle, a business process ("订单履约" spans order-service, dispatch-service
+#    and the rider app). A solution is a root
+#    of the applications view with one edge, `covers` → app use cases and entities of any
+#    application (business entities are allowed too). It owns nothing and changes nothing
+#    about the nodes it covers; studio draws the covered use cases as a use case diagram
+#    clustered by application, and the covered entities with the DDD relationships among them.
+
+# 22. DEPLOYMENT VIEW — DATA SOURCES AND OBSERVABILITY STORES
+#
+#    The deployment view gets its first node kinds, listed under `deployment:` in index.yaml
+#    with details under deployment/. The free-form deployment.yaml at the model root (nodes /
+#    network) is unchanged and still loads as extras.
+#
+#      data-source           where business data lives (mysql / redis / kafka / s3 / …).
+#                            resource --stored-in--> data-source (stored as `store: ds-001`):
+#                            a table lives in a MySQL, a cache key in a Redis, a topic in a Kafka.
+#      observability-store   where metrics / logs / traces live (prometheus / loki / tempo / …).
+#                            metric --sourced-from--> observability-store (`store: obs-001`).
+#                            With `grafana_url` (and ideally `grafana_datasource_uid`) the studio
+#                            turns the metric's expression into a Grafana Explore deep link — one
+#                            click from a use case or entity page to the live graph.
+#                            Implicit ext convention: every `ext.grafana_datasource_uid-<suffix>`
+#                            key on the store adds one more link (same Grafana, that datasource),
+#                            labelled with the suffix — e.g. a long-term or a staging datasource.
+#
+#    Two kinds, not one: a MySQL that holds orders and a Prometheus that holds latency series
+#    play different roles even when the same product (ClickHouse, Elasticsearch) can do both.
+#    The sidebar shows 部署视图 only when the model has deployment nodes.

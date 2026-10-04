@@ -14,7 +14,9 @@ resource:
     name: rider:geo
     type: cache-key
     spec: Redis GEO 集合，member = riderId
+    store: ds-002
   - id: res-019
     name: task:{id}
     type: cache-key
     spec: 任务状态与当前推送骑手
+    store: ds-002

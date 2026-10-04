@@ -258,6 +258,14 @@ export function AppDetailDiagram({ appId }: { appId: string }) {
   return <ContainerUseCaseDiagram containerName={app.name} ucs={ucs} markerId="app-uc-arrow" />
 }
 
+// Solution use case diagram: the covered app use cases, clustered by owning application
+export function SolutionUseCaseDiagram({ solutionId }: { solutionId: string }) {
+  const { ix } = useGraph()
+  const sol = ix.node(solutionId); if (!sol) return null
+  const ucs = ix.targets(solutionId, 'covers').filter(n => n.kind === 'app-use-case').map(u => ({ id: u.id, name: u.name, actor: ix.targets(u.id, 'has-actor')[0]?.name ?? '', pkg: ix.appOf(u.id)?.name ?? '' }))
+  return <ContainerUseCaseDiagram containerName={sol.name} ucs={ucs} markerId="solution-uc-arrow" />
+}
+
 // Business use case diagram (business view overview)
 export function BusinessUseCaseDiagram() {
   const { ix } = useGraph()

@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import {
   addNode, updateNode, removeNode, connect, disconnect, updateEdge, moveNode,
-  loadGraph, nodeReader, resolveRef, validateModel, scaffoldModel, parseSetKvs, type Graph,
+  loadGraph, nodeReader, resolveRef, validateModel, scaffoldModel, parseSetKvs, buildTree, type Graph,
 } from '../src/index.ts'
 
 const SRC = resolve(__dirname, '../../../methodology/examples/food-delivery/model')
@@ -139,6 +139,50 @@ describe('resources', () => {
     const { findings } = await validateModel(root)
     expect(findings.some(f => f.code === 'attr-value' && f.nodeId === ent.id)).toBe(true)
     await updateEdge(root, ent.id, 'uses', topic.id, { mode: 'publish' }, [])
+  })
+})
+
+describe('solutions', () => {
+  it('a solution is a root of the applications view and covers use cases / entities across apps', async () => {
+    const g0 = await load()
+    const t = await addNode(root, 'solution', { name: 'TestSolution', attrs: { summary: 'slice' } })
+    expect(t.id).toMatch(/^sol-\d{3}$/); expect(t.file).toBe(join(root, 'applications', 'solutions.yaml'))
+    const appOrder = g0.nodes.find(n => n.kind === 'entity' && n.name === 'Order' && n.parent)!
+    await connect(root, t.id, 'covers', 'app-use-case:CreateOrder')
+    await connect(root, t.id, 'covers', 'app-use-case:AssignRider')
+    await connect(root, t.id, 'covers', appOrder.id)
+    const g = await load()
+    expect(resolveRef(g, t.id).view).toBe('applications'); expect(resolveRef(g, t.id).parent).toBeUndefined()
+    expect(g.edges.filter(e => e.rel === 'covers' && e.from === t.id).length).toBe(3)
+    expect(buildTree(g)[1].children![0].id).toBe('solutions')
+    await removeNode(root, t.id)
+  })
+})
+
+describe('deployment view: observability stores and data sources', () => {
+  it('a metric is sourced from an observability store; types are closed sets', async () => {
+    const obs = await addNode(root, 'observability-store', { name: 'TestProm', attrs: { type: 'prometheus', grafana_url: 'https://grafana.example.com', grafana_datasource_uid: 'prom1' } })
+    expect(obs.id).toMatch(/^obs-\d{3}$/); expect(obs.file).toBe(join(root, 'deployment', 'observability-stores.yaml'))
+    const met = await addNode(root, 'metric', { name: 'TestRate', attrs: { expression: 'rate(x[5m])' } })
+    await connect(root, met.id, 'sourced-from', obs.id)
+    let g = await load()
+    expect(resolveRef(g, obs.id).view).toBe('deployment')
+    expect(g.edges.some(e => e.rel === 'sourced-from' && e.from === met.id && e.to === obs.id)).toBe(true)
+    expect(g.nodesData[met.id].store).toBe(obs.id)
+    await updateNode(root, obs.id, { type: 'splunk' }, [])
+    expect((await validateModel(root)).findings.some(f => f.code === 'attr-value' && f.nodeId === obs.id)).toBe(true)
+    await removeNode(root, met.id); await removeNode(root, obs.id)
+    g = await load(); expect(g.nodes.some(n => n.id === obs.id)).toBe(false)
+  })
+  it('a resource is stored in a data source', async () => {
+    const ds = await addNode(root, 'data-source', { name: 'TestMysql', attrs: { type: 'mysql', endpoint: 'mysql-orders.internal:3306' } })
+    expect(ds.id).toMatch(/^ds-\d{3}$/); expect(ds.file).toBe(join(root, 'deployment', 'data-sources.yaml'))
+    const table = await addNode(root, 'resource', { name: 't_test', parent: 'application:order-service', attrs: { type: 'table' } })
+    await connect(root, table.id, 'stored-in', ds.id)
+    const g = await load()
+    expect(g.edges.some(e => e.rel === 'stored-in' && e.from === table.id && e.to === ds.id)).toBe(true)
+    expect(g.nodesData[table.id].store).toBe(ds.id)
+    await removeNode(root, table.id); await removeNode(root, ds.id)
   })
 })
 

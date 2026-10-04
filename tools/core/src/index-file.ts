@@ -20,7 +20,7 @@ import { NODE_KINDS, childKindsOf, rootKindsOf, nodeSpec } from './vocabulary.ts
 import type { IndexEntry, ModelIndex, ViewName, LoadWarning } from './types.ts'
 
 export const INDEX_FILE = 'index.yaml'
-export const VIEWS: ViewName[] = ['business', 'applications']
+export const VIEWS: ViewName[] = ['business', 'applications', 'deployment']
 
 // -------------------- Parse (read side) --------------------
 
@@ -33,7 +33,7 @@ export function parseIndex(text: string, warnings: LoadWarning[] = []): ModelInd
       if (typeof v === 'number') sequences[k] = v
     }
   }
-  const out: ModelIndex = { schemaVersion, sequences, business: [], applications: [] }
+  const out: ModelIndex = { schemaVersion, sequences, business: [], applications: [], deployment: [] }
   for (const view of VIEWS) {
     const section = data[view]
     if (!section) continue
@@ -100,6 +100,7 @@ export function* walkIndex(index: ModelIndex): Generator<{ entry: IndexEntry; pa
   }
   yield* recur(index.business, undefined, 'business')
   yield* recur(index.applications, undefined, 'applications')
+  yield* recur(index.deployment, undefined, 'deployment')
 }
 
 // -------------------- Mutate (write side, yaml@2 Document) --------------------
@@ -115,7 +116,7 @@ export function serializeIndexDoc(doc: IndexDoc): string {
 }
 
 export function emptyIndexText(): string {
-  return `schema_version: "7.0"\nsequences: {}\n\nbusiness: {}\n\napplications: {}\n`
+  return `schema_version: "7.0"\nsequences: {}\n\nbusiness: {}\n\napplications: {}\n\ndeployment: {}\n`
 }
 
 function rootMap(doc: IndexDoc): YAMLMap {

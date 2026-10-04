@@ -5,10 +5,11 @@ import { pathOf, type Pt } from './primitives'
 
 export interface Rel { from: string; to: string; type: string; via?: string }
 
-export function EntityRelDiagram({ entityId, relationships }: { entityId: string; relationships: Rel[] }) {
+// entityId: the highlighted centre (entity page). extraIds: nodes to draw even without relationships (solution page).
+export function EntityRelDiagram({ entityId, relationships, extraIds = [], title = '关系图' }: { entityId?: string; relationships: Rel[]; extraIds?: string[]; title?: string }) {
   const { ix } = useGraph()
-  if (relationships.length === 0) return null
-  const ids = new Set<string>([entityId]); relationships.forEach(r => { ids.add(r.from); ids.add(r.to) })
+  if (relationships.length === 0 && extraIds.length === 0) return null
+  const ids = new Set<string>([...(entityId ? [entityId] : []), ...extraIds]); relationships.forEach(r => { ids.add(r.from); ids.add(r.to) })
   const g = new dagre.graphlib.Graph()
   g.setGraph({ rankdir: 'TB', ranksep: 60, nodesep: 60, marginx: 40, marginy: 30, edgesep: 20 })
   g.setDefaultEdgeLabel(() => ({}))
@@ -22,7 +23,7 @@ export function EntityRelDiagram({ entityId, relationships }: { entityId: string
   const halfW = nodeW / 2, halfH = nodeH / 2
   return (
     <div className="bg-white rounded-xl border border-slate-200 p-4 overflow-x-auto">
-      <h3 className="text-xs font-semibold text-slate-400 uppercase mb-3">关系图</h3>
+      <h3 className="text-xs font-semibold text-slate-400 uppercase mb-3">{title}</h3>
       <svg width={svgWidth} height={svgHeight} viewBox={`0 0 ${svgWidth} ${svgHeight}`} className="mx-auto" style={{ minWidth: svgWidth }}>
         <defs><marker id="er-arrow" markerWidth="7" markerHeight="5" refX="7" refY="2.5" orient="auto"><polygon points="0 0, 7 2.5, 0 5" fill="#3b82f6" /></marker></defs>
         {g.edges().map((e, i) => {

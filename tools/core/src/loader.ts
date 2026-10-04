@@ -14,7 +14,7 @@ import type { ModelReader } from './reader.ts'
 import type { Graph, GNode, GEdge, LoadWarning, ModelIndex } from './types.ts'
 import { CURRENT_SCHEMA_VERSION } from './version.ts'
 
-export const DETAIL_DIRS = ['business', 'applications']
+export const DETAIL_DIRS = ['business', 'applications', 'deployment']
 export const DEPLOYMENT_FILE = 'deployment.yaml'
 // Non-kind top-level keys allowed in detail files (carried through as extras).
 const EXTRA_KEYS = new Set(['topology'])
