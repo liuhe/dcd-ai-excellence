@@ -93,9 +93,41 @@ export function AttrsCard({ id }: { id: string }) {
               </tr>
             )
           })}
+          <ExtRows id={id} ext={d.ext} />
         </tbody>
       </table>
     </Card>
+  )
+}
+
+// 扩展属性 ext：逐键编辑（改值 / 删键 / 加键），每行写 ext.<key>
+function ExtRows({ id, ext }: { id: string; ext: unknown }) {
+  const m = useMutations()
+  const [editing, setEditing] = useState<string | null>(null)
+  const [adding, setAdding] = useState(false)
+  const [newKey, setNewKey] = useState('')
+  const entries = ext && typeof ext === 'object' && !Array.isArray(ext) ? Object.entries(ext as Record<string, unknown>) : []
+  const show = (v: unknown) => typeof v === 'string' ? v : JSON.stringify(v)
+  const save = async (k: string, raw: string) => { setEditing(null); setAdding(false); setNewKey(''); if (raw === '') await m.updateNode(id, {}, [`ext.${k}`]); else await m.updateNode(id, { [`ext.${k}`]: coerce(raw) }) }
+  return (
+    <>
+      {entries.map(([k, v]) => (
+        <tr key={k} className="border-b border-slate-50 align-top">
+          <td className="py-1.5 pr-3 font-mono text-xs text-slate-500 whitespace-nowrap w-40">ext.{k}<div className="text-[10px] text-slate-300">扩展属性</div></td>
+          <td className="py-1.5 text-slate-700">
+            {editing === k ? <TextEdit value={show(v)} multiline={typeof v === 'string' && v.includes('\n')} onSave={x => save(k, x)} onCancel={() => setEditing(null)} />
+              : <span className="whitespace-pre-wrap">{show(v)}<Pencil onClick={() => setEditing(k)} /><button className="ml-2 text-xs text-slate-300 hover:text-red-600" title="删除这个键" onClick={async () => { if (window.confirm(`删除扩展属性 ${k}？`)) await save(k, '') }}>✕</button></span>}
+          </td>
+        </tr>
+      ))}
+      <tr className="align-top">
+        <td className="py-1.5 pr-3 w-40">
+          {adding ? <input autoFocus className="w-full text-xs font-mono border border-slate-300 rounded px-1 py-0.5" placeholder="键名，如 data_source" value={newKey} onChange={e => setNewKey(e.target.value.trim())} onKeyDown={e => { if (e.key === 'Escape') { setAdding(false); setNewKey('') } }} />
+            : <button className="text-xs text-slate-400 hover:text-blue-600" onClick={() => setAdding(true)}>＋ 扩展属性</button>}
+        </td>
+        <td className="py-1.5">{adding && newKey && !entries.some(([k]) => k === newKey) && <TextEdit value="" onSave={x => save(newKey, x)} onCancel={() => { setAdding(false); setNewKey('') }} placeholder="值" />}{adding && entries.some(([k]) => k === newKey) && <span className="text-xs text-red-500">已存在，直接编辑上面那行</span>}</td>
+      </tr>
+    </>
   )
 }
 
@@ -142,7 +174,7 @@ export function EdgesCard({ id }: { id: string }) {
       </div>
       {adding && (
         <Picker title={`${node.name} —${adding.rel}→ 选择目标`} onCancel={() => setAdding(null)}
-          options={ix.g.nodes.filter(n => adding.targetKinds.includes(n.kind) && n.id !== id && (adding.rel !== 'exposes' || ix.data(n.id).type === 'api') && !(adding.rel === 'uses' && n.kind === 'resource' && ix.data(n.id).type === 'api')).map(n => ({ id: n.id, label: n.name, hint: `${n.kind} · ${ix.appOf(n.id)?.name ?? ''} ${n.id}` }))}
+          options={ix.g.nodes.filter(n => adding.targetKinds.includes(n.kind) && n.id !== id && (adding.rel !== 'exposes' || ix.data(n.id).type === 'api') && !(adding.rel === 'uses' && n.kind === 'resource' && ix.data(n.id).type === 'api') && !(adding.rel === 'uses' && (node.kind === 'business-use-case' || node.kind === 'system-use-case') && n.kind === 'entity' && ix.appOf(n.id))).map(n => ({ id: n.id, label: n.name, hint: `${n.kind} · ${ix.appOf(n.id)?.name ?? ''} ${n.id}` }))}
           onCreate={(adding.rel === 'exposes' || (adding.rel === 'uses' && node.kind === 'entity')) && adding.targetKinds.includes('resource') ? () => { setAdding(null); setNewResource(true) } : undefined}
           createLabel={adding.rel === 'exposes' ? '新建接口并关联…' : '新建资源并关联…'}
           onPick={async to => {

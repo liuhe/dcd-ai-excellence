@@ -402,6 +402,7 @@ API 端点、Kafka topic、共享表、Redis key 这类集成点会被多个用�
 
 | 源 | 关系 | 目标 | mode |
 |---|---|---|---|
+| 业务用例 / 系统用例 | `uses`（存在 `entities` 字段） | 业务层实体 | read / write |
 | 应用用例 | `exposes` | api 资源 | 无：用例实现这个端点 |
 | 应用用例 | `uses` | 实体 | read / write |
 | 实体 | `uses` | table / cache-key / file / bucket | read / write |
@@ -412,6 +413,7 @@ API 端点、Kafka topic、共享表、Redis key 这类集成点会被多个用�
 ```bash
 dcddp add-node resource "POST /api/session" --parent application:server --set type=api
 dcddp connect auc-040 --rel exposes --to "resource:POST /api/session"
+dcddp connect business-use-case:OrderMeal --rel uses --to entity:business/Order --set mode=write   # 业务层：只能指向业务实体
 dcddp connect auc-040 --rel uses --to entity:ClaudeSession --set mode=write
 dcddp add-node resource session.events --parent application:server --set type=topic --set spec="key = sessionId"
 dcddp connect entity:ClaudeSession --rel uses --to resource:session.events --set mode=publish
@@ -420,6 +422,23 @@ dcddp connect entity:ClaudeSession --rel uses --to resource:session.events --set
 - `app-use-case.api`（字符串列表）保留为轻量写法；端点被别的应用调用时升格为 resource
 - 实体的 `table_name` 保持为属性，不与 table 类资源建边
 - 例外情况（如 fire-and-forget 的 webhook）用边的 `note` 说明，不另加维度
+
+## 11.6 监控指标（metric）
+
+指标故意做得很小：一个名字、一个 `expression`（怎么算：PromQL / SQL / 口径），再加一条 `measures` 边指向它度量的用例（任一层）或实体。数据来源、负责人、告警阈值这些放 `ext`（见 §11.7）。业务指标 / KPI 放业务视图根（`business/metrics.yaml`），技术指标挂在拥有它的应用下（`applications/<app>/metrics.yaml`），和实体的双层放置同一套规则。
+
+```bash
+dcddp add-node metric 下单支付转化率 --set expression="Paid 订单数 / Created 订单数，按日" --set ext.data_source=ClickHouse
+dcddp connect metric:下单支付转化率 --rel measures --to business-use-case:OrderMeal
+dcddp add-node metric "CreateOrder p99 latency" --parent application:order-service --set expression="histogram_quantile(0.99, …)"
+dcddp connect "metric:CreateOrder p99 latency" --rel measures --to app-use-case:CreateOrder
+```
+
+不建告警 kind，不建指标到指标的推导关系，需要时先放 `ext`。
+
+## 11.7 扩展属性（ext）
+
+任何节点条目都可以带一个 `ext` map，放 vocabulary 没有建模的工程私有信息：负责人、工单号、SLA、数据源……工具原样保存，`validate` 只检查它是个 map，studio 只读展示、按 JSON 编辑，CLI 用 `--set ext.owner=交易团队` 写单个键。跨工程都用得上的键，再升格进 vocabulary。
 
 ## 12. 统一关系模型（Relationships）
 

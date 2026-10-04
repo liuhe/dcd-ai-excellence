@@ -83,6 +83,10 @@ export async function validateModel(root: string, reader: ModelReader = nodeRead
         findings.push({ severity: 'error', code: 'attr-shape', nodeId: n.id, file: n.file, message: `${n.id} (${n.name}): ${a.name} must be a list of strings` })
       }
     }
+    const ext = data.ext
+    if (ext !== undefined && ext !== null && (typeof ext !== 'object' || Array.isArray(ext))) {
+      findings.push({ severity: 'error', code: 'attr-shape', nodeId: n.id, file: n.file, message: `${n.id} (${n.name}): ext must be a map of extension attributes` })
+    }
   }
 
   // Closed value sets: resource.type, uses.mode
@@ -100,6 +104,15 @@ export async function validateModel(root: string, reader: ModelReader = nodeRead
     const sk = kindOf(e.from), tk = kindOf(e.to)
     if (!rel.endpoints.some(ep => ep.source === sk && ep.target === tk)) {
       findings.push({ severity: 'error', code: 'bad-endpoint', nodeId: e.from, message: `${e.from} --${e.rel}--> ${e.to}: ${sk} → ${tk} is not an allowed endpoint (allowed: ${rel.endpoints.map(ep => `${ep.source}→${ep.target}`).join(', ')})` })
+    }
+  }
+  const byId = new Map(graph.nodes.map(n => [n.id, n]))
+  const inApplication = (id: string): boolean => { let cur = byId.get(id); while (cur) { if (cur.kind === 'application') return true; cur = cur.parent ? byId.get(cur.parent) : undefined } return false }
+  for (const e of graph.edges) {
+    if (e.rel !== 'uses' || !e.targetKind.startsWith('entity:')) continue
+    const sk = kindOf(e.from)
+    if ((sk === 'business-use-case' || sk === 'system-use-case') && inApplication(e.to)) {
+      findings.push({ severity: 'error', code: 'layer', nodeId: e.from, message: `${e.from} uses ${e.to}: a ${sk} may only use business-layer entities; ${e.to} belongs to an application (use the business entity it realizes)` })
     }
   }
   const typeOf = (id: string) => String(graph.nodesData[id]?.type ?? '')

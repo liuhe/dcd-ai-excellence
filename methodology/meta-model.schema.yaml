@@ -119,6 +119,8 @@ index_yaml_schema:
         name: string
         system-use-case:                    # nesting = has-uc
           - { id: suc-001, name: string }
+    metric:                                 # business metrics / KPIs (technical ones nest under an application)
+      - { id: met-001, name: string }
     entity:                                 # business entities (no application ancestor)
       - { id: ent-001, name: string }
 
@@ -134,6 +136,8 @@ index_yaml_schema:
           - { id: pg-001, name: string }
         resource:                           # technical integration points owned by this app
           - { id: res-001, name: string }
+        metric:                             # technical metrics owned by this app
+          - { id: met-002, name: string }
         entity:                             # app-scoped entities; nesting under an entity = aggregates
           - id: ent-020
             name: string                    # aggregate root
@@ -196,6 +200,8 @@ detail_entry_schemas:
       summary: string
       actor: bw-001 | ep-001 | pt-001       # (edge, required) has-actor
       uses: [suc-001]                       # (edge) uses → system-use-case
+      entities:                             # (edge) uses → business-layer entity, mode read | write
+        - { target: ent-002, mode: write }
       stakeholder_interests:
         - stakeholder: string
           interest: string
@@ -212,6 +218,8 @@ detail_entry_schemas:
       summary: string
       actor: bw-001 | ep-001 | pt-001 | app-001   # (edge) has-actor
       entry: auc-001                        # (edge) has-entry → front-door app use case
+      entities:                             # (edge) uses → business-layer entity, mode read | write
+        - { target: ent-002, mode: write }
 
   # ---- business/entities.yaml  and  applications/<app>/domain.yaml ----
   entity:                                   # business-scoped OR app-scoped (same shape)
@@ -302,6 +310,15 @@ detail_entry_schemas:
       type: api | topic | table | cache-key | queue | file | bucket
       spec: string                          # path + method / key pattern / schema summary (markdown ok)
       summary: string
+
+  # ---- business/metrics.yaml  |  applications/<app>/metrics.yaml ----
+  metric:                                   # same shape in both places (SCHEMA NOTE 20)
+    - id: met-001
+      name: string                          # e.g. "下单支付转化率", "CreateOrder p99 latency"
+      expression: string                    # how it is computed: PromQL / SQL / 口径, free text
+      summary: string
+      measures: [buc-001, ent-002]          # (edge) measures → use case (any layer) or entity
+      ext: { data_source: string }          # any entry may carry an ext map — see NOTE 20
 
   # ---- applications/<app>/pages.yaml ----
   page:
@@ -666,6 +683,9 @@ deployment_yaml_schema:
 #                                                  用例在方法论里本来就是跨应用 include，API 只是技术外壳
 #      app-use-case  uses     entity   mode: read | write
 #      entity        uses     resource mode: read | write（table / cache-key / file / bucket）
+#    业务层同理：business-use-case / system-use-case  uses  业务实体  mode: read | write，
+#    存在条目的 `entities` 字段（业务用例的 `uses` 已被系统用例占用）。目标必须是业务层实体，
+#    不能指向应用实体——应用实体通过 realizes 回到业务实体。
 #                                      mode: publish | subscribe（topic / queue）
 #    同步 / 异步由 mode 决定，不另设标志：publish / subscribe 对应拓扑边 type: sync。
 #
@@ -682,3 +702,18 @@ deployment_yaml_schema:
 #    - constraints.yaml: code generation rules
 #    - events.yaml: event-driven architectures
 #    - workflows.yaml: multi-step business processes
+
+# 20. METRICS AND EXTENSION ATTRIBUTES
+#
+#    `metric` is deliberately small: a name, an `expression` (how it is computed) and a
+#    `measures` edge to the use cases / entities it observes. Data source, owner, alert
+#    threshold and the like are `ext` keys, not attrs. Business KPIs
+#    sit at the top of the business view (business/metrics.yaml); technical metrics nest under
+#    the application that owns them (applications/<app>/metrics.yaml). No alerting, no metric →
+#    metric derivation: add them to `ext` until a real need shows up.
+#
+#    Every node entry may carry an `ext` map of free-form extension attributes — project-specific
+#    metadata the vocabulary does not model (owner, ticket, SLA, …). Tools keep it verbatim,
+#    `validate` only checks that it is a map, studio shows it read-only and edits it as JSON,
+#    `dcddp update-node X --set ext.owner=…` writes one key. Anything that turns out to be shared
+#    across projects graduates from `ext` into the vocabulary.

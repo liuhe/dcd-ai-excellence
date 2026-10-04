@@ -91,6 +91,9 @@ entity:
     name: Order
     archetype: moment-interval
     summary: 一次点餐交易：从创建到送达或取消的全过程
+    ext:
+      owner: 交易团队
+      pii: false
     fields:
       - id: Long, 主键
       - customerId: Long, 引用 Customer

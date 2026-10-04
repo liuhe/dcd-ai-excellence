@@ -9,9 +9,9 @@ detail entries live in flat per-kind files under `business/` and `applications/`
 
 ## Index
 
-**Node kinds** (18): `organization` · `business-worker` · `external-party` · `participant` · `business-use-case` · `system` · `system-use-case` · `application` · `app-use-case` · `page` · `resource` · `entity` · `value-object` · `enum` · `role` · `domain-service` · `domain-event` · `rule`
+**Node kinds** (19): `organization` · `business-worker` · `external-party` · `participant` · `business-use-case` · `system` · `system-use-case` · `application` · `app-use-case` · `page` · `resource` · `metric` · `entity` · `value-object` · `enum` · `role` · `domain-service` · `domain-event` · `rule`
 
-**Rel kinds** (27): `has-uc` · `has-page` · `has-participant` · `has-role` · `has-domain-service` · `has-domain-event` · `has-entity` · `has-value-type` · `has-resource` · `aggregates` · `has-rule` · `provides` · `has-actor` · `uses` · `exposes` · `has-entry` · `references` · `includes` · `extends` · `composition` · `associates` · `depends-on` · `implements` · `realizes` · `emits` · `handles` · `transitions-to`
+**Rel kinds** (29): `has-uc` · `has-page` · `has-participant` · `has-role` · `has-domain-service` · `has-domain-event` · `has-entity` · `has-value-type` · `has-metric` · `has-resource` · `aggregates` · `has-rule` · `provides` · `has-actor` · `uses` · `measures` · `exposes` · `has-entry` · `references` · `includes` · `extends` · `composition` · `associates` · `depends-on` · `implements` · `realizes` · `emits` · `handles` · `transitions-to`
 
 **Value-type kinds**: primitives (built-in), `free-text` (escape hatch), `value-object` · `enum` (user-defined nodes)
 
@@ -330,6 +330,23 @@ Rule — a natural-language constraint attached to a use case or entity (inline 
   | `content` | `free-text` |
   | `field` | `String` |
 
+#### `metric`
+
+Metric — a monitoring metric or KPI: a name and an expression. Business-level at the top of the business view, technical under an application. `measures` points at the use cases / entities it observes; anything else (data source, owner, alert) goes in `ext`
+
+- **Id**: `met-<seq>`
+- **Placement**: top of `business` view or under `application`
+- **Storage**:
+  - index.yaml: business.metric[]
+  - index.yaml: nested under a application entry as metric[]
+  - Detail: business/metrics.yaml → metric[]
+- **Attrs**:
+
+  | Name | Type |
+  |------|------|
+  | `expression` | `free-text` |
+  | `summary` | `free-text` |
+
 ## Rel kinds
 
 ### Ownership (implicit — index nesting)
@@ -439,6 +456,17 @@ _Implicit — containment expressed by index.yaml nesting._
   - `application` → `resource`
     - Containment — expressed by nesting the resource under the application in index.yaml
 
+#### `has-metric`
+
+Application owns a technical metric
+
+_Implicit — containment expressed by index.yaml nesting._
+
+- **Edge attrs**: _(none — endpoints only)_
+- **Endpoints**:
+  - `application` → `metric`
+    - Containment — expressed by nesting the metric under the application in index.yaml
+
 #### `aggregates`
 
 DDD aggregate boundary: root entity aggregates member entities (index nesting under the root)
@@ -521,13 +549,21 @@ A use case is performed by an actor — a business worker / external party / par
 
 #### `uses`
 
-Functional dependency: business use case invokes system use case; entity uses a value object (derived from field types); app use case uses an entity (read / write); entity uses a resource (read / write / publish / subscribe)
+Functional dependency: business use case invokes system use case; business / system use case uses a business-layer entity (read / write, field `entities`); entity uses a value object (derived from field types); app use case uses an entity (read / write); entity uses a resource (read / write / publish / subscribe)
 
 - **Edge attrs**: `mode`, `note`
 - **Endpoints**:
   - `business-use-case` → `system-use-case`
     - Stored on source entry at `uses` — target value is the target node id
     - Shape: string list. Example: `uses: [suc-001]`
+  - `business-use-case` → `entity`
+    - Stored on source entry at `entities` — target value is the target node id
+    - Shape: struct list — target in `target`
+    - Edge attrs live alongside in the map: mode, note
+  - `system-use-case` → `entity`
+    - Stored on source entry at `entities` — target value is the target node id
+    - Shape: struct list — target in `target`
+    - Edge attrs live alongside in the map: mode, note
   - `entity` → `value-object`
     - Derived — computed from source's `fields[?].type` matching value-object names in the same application
     - CLI: connect/disconnect not supported — edit the underlying `fields`
@@ -559,6 +595,27 @@ System use case designates its entry app use case
   - `system-use-case` → `app-use-case`
     - Stored on source entry at `entry` — target value is the target node id
     - Shape: scalar — at most one edge of this kind per source. Example: `entry: auc-001`
+
+### Observability
+
+#### `measures`
+
+Metric observes a use case (any layer) or an entity
+
+- **Edge attrs**: _(none — endpoints only)_
+- **Endpoints**:
+  - `metric` → `business-use-case`
+    - Stored on source entry at `measures` — target value is the target node id
+    - Shape: string list. Example: `measures: [buc-001]`
+  - `metric` → `system-use-case`
+    - Stored on source entry at `measures` — target value is the target node id
+    - Shape: string list. Example: `measures: [suc-001]`
+  - `metric` → `app-use-case`
+    - Stored on source entry at `measures` — target value is the target node id
+    - Shape: string list. Example: `measures: [auc-001]`
+  - `metric` → `entity`
+    - Stored on source entry at `measures` — target value is the target node id
+    - Shape: string list. Example: `measures: [ent-003]`
 
 ### Reference
 
@@ -710,3 +767,9 @@ Value-types appear in the `type` slot of attrs and fields. Primitives: `String` 
 User-defined value types are the node kinds `value-object` · `enum`; a field type names one by its name within the same application.
 
 Composite: `List<T>` · `Optional<T>` · `Map<K, V>`.
+
+---
+
+## Extension attributes
+
+Every node entry may carry an `ext` map of free-form extension attributes (project-specific metadata the vocabulary does not model, e.g. `ext: { owner: 交易团队, data_source: ClickHouse }`). Tools keep it verbatim; `validate` only checks that it is a map; `--set ext.owner=…` writes into it.

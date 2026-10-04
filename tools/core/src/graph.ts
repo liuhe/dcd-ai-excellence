@@ -12,7 +12,7 @@ import { nodeReader } from './reader.ts'
 import { loadGraph, resolveRef, DETAIL_DIRS } from './loader.ts'
 import * as idx from './index-file.ts'
 import {
-  nodeSpec, relSpec, resolveEndpoint, locationFor, type NodeKindSpec, type RelEndpoint,
+  nodeSpec, relSpec, resolveEndpoint, locationFor, EXT_ATTR, type NodeKindSpec, type RelEndpoint,
 } from './vocabulary.ts'
 import type { Graph, GNode } from './types.ts'
 import { cleanReferencesToDeleted } from './ref-cleanup.ts'
@@ -49,7 +49,7 @@ export function parseSetKvs(kvs: string[]): Coerced {
 }
 
 function checkAttrs(spec: NodeKindSpec, attrs: Coerced): void {
-  const allowed = new Set(['name', ...spec.attrs.map(a => a.name)])
+  const allowed = new Set(['name', EXT_ATTR, ...spec.attrs.map(a => a.name)])
   for (const key of Object.keys(attrs)) {
     const top = key.split('.')[0]
     if (allowed.has(top)) continue

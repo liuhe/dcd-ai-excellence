@@ -10,6 +10,8 @@ import { EntityRelDiagram } from '../diagrams/EntityRelDiagram'
 import { FieldsTable, StateMachineCard, AppUCTree, APP_TYPE_COLORS, partyIcon, participantIcon, groupByPackage, PackageCard, RuleList, RuleItem } from './shared'
 import { businessRelationships, businessEntityOf, rolesOf, DDD_RELS } from './entity-helpers'
 import { EditToolbar, AttrsCard, EdgesCard, ChildrenCard } from '../edit/EditCards'
+import { MetricsOf } from '../edit/MetricsOf'
+import { KIND_LABELS, KIND_ICONS } from '../components/kinds'
 
 // 页面骨架：标题 / 属性 / 自身内容 / 对外关系 / 被谁引用（各 kind 页内） → 扩展文档 → 新建子节点。
 // 扩展文档只读模式下没有内容不显示；编辑模式下空占位放进编辑区。
@@ -26,6 +28,7 @@ export function NodePage({ id }: { id: string }) {
   return (
     <div className="space-y-4">
       <KindPage id={id} kind={node.kind} />
+      {!canEdit && <ExtCard id={id} />}
       {!PLACES_EDGES.has(node.kind) && <EdgesCard id={id} />}
       {hasDocs && <DocsSection docs={docs} base={baseFor(id)} />}
       {canEdit && (
@@ -53,6 +56,7 @@ function KindPage({ id, kind }: { id: string; kind: string }) {
     case 'application': return <AppPage id={id} />
     case 'page': return <PagePage id={id} />
     case 'resource': return <ResourcePage id={id} />
+    case 'metric': return <MetricPage id={id} />
     case 'app-use-case': return <AucPage id={id} />
     case 'role': return <RolePage id={id} />
     case 'value-object': return <VoPage id={id} />
@@ -185,7 +189,7 @@ function TraceHeader({ title, sub }: { title: string; sub: string }) {
 }
 
 function SucPage({ id }: { id: string }) {
-  const { ix } = useGraph()
+  const { ix, canEdit } = useGraph()
   const system = ix.parent(id), actor = ix.targets(id, 'has-actor')[0], entry = ix.targets(id, 'has-entry')[0]
   const bucs = ix.sources(id, 'uses')
   return (
@@ -203,7 +207,9 @@ function SucPage({ id }: { id: string }) {
           <div className="ml-4 border-l-2 border-blue-100 pl-4 space-y-2"><AppUCTree entryId={entry.id} /></div>
         </Card>
       )}
+      {!canEdit && <UsedBusinessEntities id={id} />}
       <EdgesCard id={id} />
+      <MetricsOf id={id} />
       {/* 追溯链路（原侧边栏子项，现为分区） */}
       <TraceHeader title="追溯链路" sub="系统用例 → 子系统用例" />
       <Card>
@@ -216,7 +222,7 @@ function SucPage({ id }: { id: string }) {
 }
 
 function BucPage({ id }: { id: string }) {
-  const { ix } = useGraph()
+  const { ix, canEdit } = useGraph()
   const d = ix.data(id); const actor = ix.targets(id, 'has-actor')[0]
   const interests = list<Data>(d, 'stakeholder_interests'); const sucs = ix.targets(id, 'uses')
   const sucRow = (s: { id: string }, showRules: boolean) => {
@@ -247,7 +253,9 @@ function BucPage({ id }: { id: string }) {
           <div className="space-y-3">{sucs.map(s => sucRow(s, false))}</div>
         </Card>
       )}
+      {!canEdit && <UsedBusinessEntities id={id} />}
       <EdgesCard id={id} />
+      <MetricsOf id={id} />
       {/* 追溯链路（原侧边栏子项，现为分区） */}
       {sucs.length > 0 && (
         <>
@@ -323,6 +331,7 @@ function BusinessEntityPage({ id }: { id: string }) {
       )}
       <EdgesCard id={id} />
       <EntityResources id={id} />
+      <MetricsOf id={id} />
       {crossRefs.length > 0 && (
         <Card><H3>被引用</H3>{crossRefs.map((ref, i) => <div key={i} className="flex items-center gap-2 py-1 text-sm"><Badge color="purple"><Ref id={ref.model} /></Badge><span className="font-mono text-xs text-slate-600">.{ref.field}</span><span className="text-xs text-slate-400">— {String(ref.desc)}</span></div>)}</Card>
       )}
@@ -376,6 +385,7 @@ function AppEntityPage({ id }: { id: string }) {
       <AggregateSections members={members} vos={aggVOs} invariants={invariants} repo={repo} base={base} />
       <EdgesCard id={id} />
       <EntityResources id={id} />
+      <MetricsOf id={id} />
     </div>
   )
 }
@@ -424,6 +434,7 @@ function AppPage({ id }: { id: string }) {
         </Card>
       )}
       <AppResources id={id} />
+      <AppMetrics id={id} />
       {infra.length > 0 && (
         <Card><H3>基础设施 ({infra.length})</H3>
           <div className="space-y-2">{infra.map((item, j) => (
@@ -494,11 +505,26 @@ function UsedEntities({ id }: { id: string }) {
   )
 }
 
-// 实体页：使用的资源（uses → resource）与被哪些用例使用（uses 入边）
+// 业务用例 / 系统用例页：涉及的业务实体（uses → entity，mode read / write）
+function UsedBusinessEntities({ id }: { id: string }) {
+  const { ix } = useGraph()
+  const edges = ix.outEdges(id, 'uses').filter(e => ix.kind(e.to) === 'entity')
+  if (edges.length === 0) return null
+  return (
+    <Card><H3>涉及的业务实体 ({edges.length})</H3>
+      <div className="space-y-1">{edges.map(e => { const mode = String(e.attrs?.mode ?? '')
+        return (<div key={e.id} className="flex items-center gap-2 text-sm flex-wrap">{mode && <Badge color={MODE_COLORS[mode] || 'gray'}>{mode}</Badge>}<span>▪</span><Ref id={e.to} />{str(ix.data(e.to), 'archetype') && <Badge color="gray">{str(ix.data(e.to), 'archetype')}</Badge>}{e.attrs?.note ? <span className="text-xs text-slate-500 italic">{String(e.attrs.note)}</span> : null}</div>) })}</div>
+    </Card>
+  )
+}
+
+const UC_KIND_LABEL: Record<string, string> = { 'business-use-case': '业务用例', 'system-use-case': '系统用例' }
+
+// 实体页：使用的资源（uses → resource）与被哪些用例使用（uses 入边：业务 / 系统 / 应用用例）
 function EntityResources({ id }: { id: string }) {
   const { ix, canEdit } = useGraph()
   const edges = canEdit ? [] : ix.outEdges(id, 'uses').filter(e => ix.kind(e.to) === 'resource')
-  const users = ix.inEdges(id, 'uses').filter(e => ix.kind(e.from) === 'app-use-case')
+  const users = ix.inEdges(id, 'uses').filter(e => ['app-use-case', 'business-use-case', 'system-use-case'].includes(ix.kind(e.from)))
   return (
     <>
       {edges.length > 0 && (
@@ -509,11 +535,57 @@ function EntityResources({ id }: { id: string }) {
       )}
       {users.length > 0 && (
         <Card><H3>被哪些用例使用 ({users.length})</H3>
-          <div className="space-y-1">{users.map(e => { const mode = String(e.attrs?.mode ?? ''); const ua = ix.appOf(e.from)
-            return (<div key={e.id} className="flex items-center gap-2 text-sm flex-wrap">{mode && <Badge color={MODE_COLORS[mode] || 'gray'}>{mode}</Badge>}<span>◦</span><Ref id={e.from} />{ua && <Badge color="green"><Ref id={ua.id} /></Badge>}</div>) })}</div>
+          <div className="space-y-1">{users.map(e => { const mode = String(e.attrs?.mode ?? ''); const ua = ix.appOf(e.from); const k = ix.kind(e.from)
+            return (<div key={e.id} className="flex items-center gap-2 text-sm flex-wrap">{mode && <Badge color={MODE_COLORS[mode] || 'gray'}>{mode}</Badge>}<span>{k === 'business-use-case' ? '🎯' : k === 'system-use-case' ? '◎' : '◦'}</span><Ref id={e.from} />{UC_KIND_LABEL[k] && <Badge color="blue">{UC_KIND_LABEL[k]}</Badge>}{ua && <Badge color="green"><Ref id={ua.id} /></Badge>}</div>) })}</div>
         </Card>
       )}
     </>
+  )
+}
+
+// 指标页：表达式 / 数据来源 / 度量对象
+function MetricPage({ id }: { id: string }) {
+  const { ix, baseFor, canEdit } = useGraph()
+  const d = ix.data(id); const app = ix.appOf(id)
+  const targets = ix.targets(id, 'measures')
+  return (
+    <div className="space-y-4">
+      <h2 className="text-2xl font-bold text-slate-800">📈 {ix.name(id)}</h2>
+      <EditToolbar id={id} />
+      <div className="flex gap-2 items-center flex-wrap">{app ? <Badge color="green"><Ref id={app.id} /></Badge> : <Badge color="purple">业务指标</Badge>}<Badge color="gray">指标</Badge></div>
+      {str(d, 'summary') && <p className="text-slate-600">{str(d, 'summary')}</p>}
+      <AttrsCard id={id} />
+      {str(d, 'expression') && <Card><H3>表达式</H3><pre className="text-sm text-slate-700 whitespace-pre-wrap font-mono bg-slate-50 rounded p-2 border border-slate-100"><MD basePath={baseFor(id)}>{str(d, 'expression')}</MD></pre></Card>}
+      {!canEdit && targets.length > 0 && (
+        <Card><H3>度量对象 ({targets.length})</H3>
+          <div className="space-y-1">{targets.map(t => { const ta = ix.appOf(t.id); return (<div key={t.id} className="flex items-center gap-2 text-sm flex-wrap"><span>{KIND_ICONS[t.kind] ?? '•'}</span><Ref id={t.id} /><Badge color="blue">{KIND_LABELS[t.kind] ?? t.kind}</Badge>{ta && <Badge color="green"><Ref id={ta.id} /></Badge>}</div>) })}</div>
+        </Card>
+      )}
+    </div>
+  )
+}
+
+// 应用页：本应用的技术指标
+function AppMetrics({ id }: { id: string }) {
+  const { ix } = useGraph()
+  const metrics = ix.childrenOf(id, 'metric')
+  if (metrics.length === 0) return null
+  return (
+    <Card><H3>指标 ({metrics.length})</H3>
+      <div className="space-y-1">{metrics.map(m => (<div key={m.id} className="flex items-center gap-2 text-sm"><span>📈</span><Ref id={m.id} /><span className="text-xs text-slate-400">{ix.targets(m.id, 'measures').length} 个度量对象</span></div>))}</div>
+    </Card>
+  )
+}
+
+// 任意节点：扩展属性 ext（自由 map）
+function ExtCard({ id }: { id: string }) {
+  const { ix } = useGraph()
+  const ext = ix.data(id).ext
+  if (!ext || typeof ext !== 'object' || Array.isArray(ext) || Object.keys(ext as object).length === 0) return null
+  return (
+    <Card><H3>扩展属性</H3>
+      <table className="text-sm"><tbody>{Object.entries(ext as Record<string, unknown>).map(([k, v]) => <tr key={k} className="border-b border-slate-50"><td className="py-1 pr-4 font-mono text-xs text-slate-500">{k}</td><td className="py-1 text-slate-700">{typeof v === 'string' ? v : JSON.stringify(v)}</td></tr>)}</tbody></table>
+    </Card>
   )
 }
 
@@ -643,6 +715,7 @@ function AucPage({ id }: { id: string }) {
           {callers.map((c, i) => <div key={i} className="py-1.5 flex items-center gap-2"><span>◦</span><Ref id={c.id} /><span className="text-xs text-slate-400">«{c.rel}»</span>{ix.appOf(c.id) && <Badge color="green"><Ref id={ix.appOf(c.id)!.id} /></Badge>}</div>)}
         </Card>
       )}
+      <MetricsOf id={id} />
     </div>
   )
 }

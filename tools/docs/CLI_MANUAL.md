@@ -125,6 +125,9 @@ dcddp connect ent-020 --rel realizes --to ent-001        # 应用实体实现业
 dcddp add-node resource "POST /api/session" --parent application:server --set type=api
 dcddp connect auc-040 --rel exposes --to "resource:POST /api/session"             # 用例实现接口
 dcddp connect auc-040 --rel uses --to entity:ClaudeSession --set mode=write       # 用例使用实体
+dcddp add-node metric 下单支付转化率 --set expression="Paid / Created，按日" --set ext.data_source=ClickHouse   # 业务指标（根）
+dcddp connect metric:下单支付转化率 --rel measures --to business-use-case:OrderMeal                        # 指标度量用例 / 实体
+dcddp update-node entity Order --set ext.owner=交易团队                                                   # 扩展属性：任意节点的 ext map
 dcddp add-node resource session.events --parent application:server --set type=topic
 dcddp connect entity:ClaudeSession --rel uses --to resource:session.events --set mode=publish   # 实体使用资源
 ```

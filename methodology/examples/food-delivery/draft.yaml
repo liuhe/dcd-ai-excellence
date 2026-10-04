@@ -29,6 +29,7 @@ business-use-case:
       - { stakeholder: Merchant, interest: 订单信息准确，付款后才进入出餐流程 }
       - { stakeholder: OpsManager, interest: 下单到送达的转化率与时效可度量 }
     uses: [PlaceOrder, PayOrder, TrackOrder]
+    entities: [{ target: Order, mode: write }, { target: MenuItem, mode: read }, { target: Payment, mode: write }]
   - name: PrepareOrder
     summary: 商家接单、备餐并标记可取餐
     actor: Merchant
@@ -36,6 +37,7 @@ business-use-case:
       - { stakeholder: Merchant, interest: 新订单及时提醒，菜单可随时调整 }
       - { stakeholder: Customer, interest: 商家超时未接单时自动取消并退款 }
     uses: [AcceptOrder, MarkOrderReady, ManageMenu]
+    entities: [{ target: Order, mode: write }, { target: MenuItem, mode: write }, { target: Restaurant, mode: read }]
   - name: DeliverOrder
     summary: 骑手接到配送任务，取餐并送达顾客
     actor: Rider
@@ -43,6 +45,7 @@ business-use-case:
       - { stakeholder: Rider, interest: 任务分配就近合理，路线清晰 }
       - { stakeholder: Customer, interest: 能看到骑手实时位置与预计送达时间 }
     uses: [DispatchRider, CompleteDelivery]
+    entities: [{ target: Delivery, mode: write }, { target: Rider, mode: read }, { target: Order, mode: write }]
   - name: ResolveAfterSale
     summary: 顾客对订单提出退款，小额自动通过，其余由客服审核
     actor: Customer
@@ -50,27 +53,42 @@ business-use-case:
       - { stakeholder: Customer, interest: 退款流程简单，小额秒退 }
       - { stakeholder: CustomerService, interest: 只处理需要人工判断的申请 }
     uses: [RequestRefund, ReviewRefund]
+    entities: [{ target: RefundRequest, mode: write }, { target: Payment, mode: write }, { target: Order, mode: read }]
   - name: OperateMarketplace
     summary: 运营监控全平台订单流转，发现异常
     actor: OpsManager
     stakeholder_interests:
       - { stakeholder: OpsManager, interest: 实时看到各环节积压与超时订单 }
     uses: [MonitorOrders]
+    entities: [{ target: Order, mode: read }]
 system:
   - name: QuickBitePlatform
     summary: 支撑上述业务用例的软件系统整体
     system-use-case:
-      - { name: PlaceOrder, summary: 顾客选菜、填地址、提交订单, actor: Customer, entry: app-use-case:PlaceOrder }
-      - { name: PayOrder, summary: 顾客为订单付款，支付结果回写订单, actor: Customer, entry: PayForOrder }
-      - { name: TrackOrder, summary: 顾客查看订单状态与骑手位置, actor: Customer, entry: TrackMyOrder }
-      - { name: AcceptOrder, summary: 商家确认接单, actor: Merchant, entry: AcceptIncomingOrder }
-      - { name: MarkOrderReady, summary: 商家出餐完成，等待骑手取餐, actor: Merchant, entry: MarkReadyForPickup }
-      - { name: ManageMenu, summary: 商家维护菜单与售罄状态, actor: Merchant, entry: EditMenu }
-      - { name: DispatchRider, summary: 系统为出餐完成的订单匹配骑手, actor: Rider, entry: ReceiveTaskOffer }
-      - { name: CompleteDelivery, summary: 骑手送达并完成任务, actor: Rider, entry: FinishDelivery }
-      - { name: RequestRefund, summary: 顾客提交退款申请, actor: Customer, entry: RequestRefund }
-      - { name: ReviewRefund, summary: 客服审核退款申请, actor: CustomerService, entry: ops-console/ReviewRefundRequest }
-      - { name: MonitorOrders, summary: 运营查看订单看板, actor: OpsManager, entry: ViewOrderBoard }
+      - { name: PlaceOrder, summary: 顾客选菜、填地址、提交订单, actor: Customer, entry: app-use-case:PlaceOrder, entities: [{ target: Order, mode: write }, { target: MenuItem, mode: read }] }
+      - { name: PayOrder, summary: 顾客为订单付款，支付结果回写订单, actor: Customer, entry: PayForOrder, entities: [{ target: Payment, mode: write }, { target: Order, mode: write }] }
+      - { name: TrackOrder, summary: 顾客查看订单状态与骑手位置, actor: Customer, entry: TrackMyOrder, entities: [{ target: Order, mode: read }, { target: Delivery, mode: read }] }
+      - { name: AcceptOrder, summary: 商家确认接单, actor: Merchant, entry: AcceptIncomingOrder, entities: [{ target: Order, mode: write }] }
+      - { name: MarkOrderReady, summary: 商家出餐完成，等待骑手取餐, actor: Merchant, entry: MarkReadyForPickup, entities: [{ target: Order, mode: write }] }
+      - { name: ManageMenu, summary: 商家维护菜单与售罄状态, actor: Merchant, entry: EditMenu, entities: [{ target: MenuItem, mode: write }] }
+      - { name: DispatchRider, summary: 系统为出餐完成的订单匹配骑手, actor: Rider, entry: ReceiveTaskOffer, entities: [{ target: Delivery, mode: write }, { target: Rider, mode: read }] }
+      - { name: CompleteDelivery, summary: 骑手送达并完成任务, actor: Rider, entry: FinishDelivery, entities: [{ target: Delivery, mode: write }, { target: Order, mode: write }] }
+      - { name: RequestRefund, summary: 顾客提交退款申请, actor: Customer, entry: RequestRefund, entities: [{ target: RefundRequest, mode: write }] }
+      - { name: ReviewRefund, summary: 客服审核退款申请, actor: CustomerService, entry: ops-console/ReviewRefundRequest, entities: [{ target: RefundRequest, mode: write }, { target: Payment, mode: write }] }
+      - { name: MonitorOrders, summary: 运营查看订单看板, actor: OpsManager, entry: ViewOrderBoard, entities: [{ target: Order, mode: read }] }
+metric:
+  - name: 下单支付转化率
+    expression: 当日 status 到达过 Paid 的订单数 / 当日创建的订单数
+    ext: { data_source: ClickHouse 订单事实表（按 order.events 回放） }
+    measures: [OrderMeal, PlaceOrder, Order]
+  - name: 平均送达时长
+    expression: avg(deliveredAt - paidAt)，按小时
+    ext: { data_source: ClickHouse 订单事实表 }
+    measures: [DeliverOrder, Delivery]
+  - name: 退款率
+    expression: 退款申请通过数 / 已送达订单数，按日
+    ext: { data_source: ClickHouse 订单事实表 }
+    measures: [ResolveAfterSale, RefundRequest]
 entity:
   - name: Customer
     archetype: role
@@ -131,6 +149,7 @@ entity:
   - name: Order
     archetype: moment-interval
     summary: 一次点餐交易：从创建到送达或取消的全过程
+    ext: { owner: 交易团队, pii: false }
     fields:
       - id: "Long, 主键"
       - customerId: "Long, 引用 Customer"
@@ -483,6 +502,15 @@ application:
       - name: PaymentSucceeded
         published_when: 支付机构回调成功
         payload: [{ orderId: Long }, { paymentId: Long }]
+    metric:
+      - name: CreateOrder p99 延迟
+        expression: "histogram_quantile(0.99, sum(rate(http_server_duration_bucket{route=\"/api/orders\",method=\"POST\"}[5m])) by (le))"
+        ext: { data_source: Prometheus }
+        measures: [CreateOrder]
+      - name: 支付回调失败率
+        expression: "sum(rate(payment_callback_total{result=\"fail\"}[5m])) / sum(rate(payment_callback_total[5m]))"
+        ext: { data_source: Prometheus }
+        measures: [ConfirmPayment, Payment]
     resource:
       - { name: "POST /api/orders", type: api, spec: "body: { restaurantId, lines[{menuItemId, quantity}], deliveryAddress }" }
       - { name: "POST /api/payments/callback", type: api, spec: 支付机构回调，签名在 header }
@@ -594,6 +622,11 @@ application:
       - name: TaskAccepted
         published_when: 骑手接受任务
         payload: [{ taskId: Long }, { riderId: Long }, { orderId: Long }]
+    metric:
+      - name: 派单超时数
+        expression: 过去 10 分钟内 Offered → Pending 回退次数
+        ext: { data_source: "Redis task:{id} 状态变更日志" }
+        measures: [AssignRider, DeliveryTask]
     resource:
       - { name: "POST /api/tasks/{id}/accept", type: api }
       - { name: "POST /api/riders/{id}/location", type: api, spec: "body: { lat, lng }" }

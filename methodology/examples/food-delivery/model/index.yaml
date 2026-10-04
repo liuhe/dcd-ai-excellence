@@ -7,6 +7,7 @@ sequences:
   buc: 5
   sys: 1
   suc: 11
+  met: 6
   ent: 16
   rule: 47
   app: 7
@@ -55,6 +56,10 @@ business:
             { id: suc-011, name: MonitorOrders }
           ]
       }
+  metric:
+    - { id: met-001, name: 下单支付转化率 }
+    - { id: met-002, name: 平均送达时长 }
+    - { id: met-003, name: 退款率 }
   entity:
     - { id: ent-001, name: Customer }
     - { id: ent-002, name: Restaurant }
@@ -134,6 +139,7 @@ applications:
             { id: evt-004, name: OrderDelivered },
             { id: evt-005, name: PaymentSucceeded }
           ],
+        metric: [ { id: met-004, name: CreateOrder p99 延迟 }, { id: met-005, name: 支付回调失败率 } ],
         resource:
           [
             { id: res-001, name: POST /api/orders },
@@ -173,6 +179,7 @@ applications:
         enum: [ { id: enum-006, name: TaskStatus } ],
         domain-service: [ { id: svc-004, name: RiderMatcher } ],
         domain-event: [ { id: evt-006, name: TaskAccepted } ],
+        metric: [ { id: met-006, name: 派单超时数 } ],
         resource:
           [
             { id: res-015, name: "POST /api/tasks/{id}/accept" },

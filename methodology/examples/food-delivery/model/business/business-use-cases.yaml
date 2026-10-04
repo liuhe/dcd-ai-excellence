@@ -14,6 +14,13 @@ business-use-case:
       - suc-001
       - suc-002
       - suc-003
+    entities:
+      - target: ent-005
+        mode: write
+      - target: ent-004
+        mode: read
+      - target: ent-007
+        mode: write
   - id: buc-002
     name: PrepareOrder
     summary: 商家接单、备餐并标记可取餐
@@ -27,6 +34,13 @@ business-use-case:
       - suc-004
       - suc-005
       - suc-006
+    entities:
+      - target: ent-005
+        mode: write
+      - target: ent-004
+        mode: write
+      - target: ent-002
+        mode: read
   - id: buc-003
     name: DeliverOrder
     summary: 骑手接到配送任务，取餐并送达顾客
@@ -39,6 +53,13 @@ business-use-case:
     uses:
       - suc-007
       - suc-008
+    entities:
+      - target: ent-008
+        mode: write
+      - target: ent-003
+        mode: read
+      - target: ent-005
+        mode: write
   - id: buc-004
     name: ResolveAfterSale
     summary: 顾客对订单提出退款，小额自动通过，其余由客服审核
@@ -51,6 +72,13 @@ business-use-case:
     uses:
       - suc-009
       - suc-010
+    entities:
+      - target: ent-009
+        mode: write
+      - target: ent-007
+        mode: write
+      - target: ent-005
+        mode: read
   - id: buc-005
     name: OperateMarketplace
     summary: 运营监控全平台订单流转，发现异常
@@ -60,3 +88,6 @@ business-use-case:
     actor: bw-002
     uses:
       - suc-011
+    entities:
+      - target: ent-005
+        mode: read

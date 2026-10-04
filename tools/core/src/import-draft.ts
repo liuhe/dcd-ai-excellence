@@ -116,10 +116,10 @@ type Cand = { key?: number; id?: string; scope: string; path: string; names: str
 function makeResolver(g: Graph, nodes: PlannedNode[]) {
   const byKey = new Map(nodes.map(n => [n.key, n]))
   const byId = new Map(g.nodes.map(n => [n.id, n]))
-  // scope = the top-level ancestor if it is an application / system, else the business view
   const plannedChain = (n: PlannedNode): PlannedNode[] => { const c: PlannedNode[] = []; let cur: PlannedNode | undefined = n; while (cur) { c.push(cur); cur = cur.parentKey === undefined ? undefined : byKey.get(cur.parentKey) } return c }
   const existingChain = (id: string) => { const c: typeof g.nodes = []; let cur = byId.get(id); while (cur) { c.push(cur); cur = cur.parent ? byId.get(cur.parent) : undefined } return c }
-  const scopeOf = (chain: { kind: string; key?: number; id?: string }[]) => { const top = chain[chain.length - 1]; return top && (top.kind === 'application' || top.kind === 'system') ? (top.id ? `id:${top.id}` : `key:${top.key}`) : 'business' }
+  // scope = the owning application; everything in the business view (incl. systems) is one scope
+  const scopeOf = (chain: { kind: string; key?: number; id?: string }[]) => { const top = chain[chain.length - 1]; return top && top.kind === 'application' ? (top.id ? `id:${top.id}` : `key:${top.key}`) : 'business' }
   const plannedCand = (n: PlannedNode): Cand => { const ch = plannedChain(n); return { key: n.key, scope: scopeOf(ch), path: `draft ${n.path}`, names: ch.slice(1).map(x => x.name) } }
   const existingCand = (id: string): Cand => { const ch = existingChain(id); return { id, scope: scopeOf(ch), path: id, names: ch.slice(1).map(x => x.name) } }
 

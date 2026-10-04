@@ -4,7 +4,8 @@
 // 业务模型; applications view: per app → 领域模型 / 页面 / 用例); the CONTENT comes from
 // index.yaml (ids, order, packages, aggregate nesting). Tree ids double as studio routes:
 //   view / group ids: 'business', 'org-relations', 'workers', 'business-ucs', 'business-model',
-//                     'applications', 'app-domain:<appId>', 'app-pages:<appId>', 'app-ucs:<appId>'
+//                     'business-metrics', 'applications', 'app-domain:<appId>', 'app-pages:<appId>', 'app-ucs:<appId>',
+//                     'app-resources:<appId>', 'app-metrics:<appId>'
 //   package folders:  'pkg:<scope>:<path>'
 //   nodes:            the node id
 
@@ -63,6 +64,7 @@ export function buildTree(g: Graph): TreeNode[] {
       { id: 'org-relations', label: '组织关系', icon: '🔲', children: [orgNode, ...partyNodes] },
       { id: 'business-ucs', label: '业务用例', icon: '🎯', children: packageTree('business-ucs', bucs, b => ({ id: b.id, label: b.name, icon: '•' })) },
       { id: 'business-model', label: '业务模型', icon: '📊', children: entities.map(entityNode) },
+      ...(roots('metric').length ? [{ id: 'business-metrics', label: '指标', icon: '📈', children: roots('metric').map(m => ({ id: m.id, label: m.name, icon: '📈' })) }] : []),
     ],
   }
 
@@ -73,6 +75,7 @@ export function buildTree(g: Graph): TreeNode[] {
       const ucs = kids(app, 'app-use-case')
       const pages = kids(app, 'page')
       const resources = kids(app, 'resource')
+      const metrics = kids(app, 'metric')
       const roles = kids(app, 'role')
       const ents = kids(app, 'entity')
       const vos = kids(app, 'value-object')
@@ -102,6 +105,7 @@ export function buildTree(g: Graph): TreeNode[] {
       if (pages.length) children.push({ id: `app-pages:${app.id}`, label: '页面', icon: '🗂', children: pages.map(p => ({ id: p.id, label: p.name, icon: '📄' })) })
       if (ucs.length) children.push({ id: `app-ucs:${app.id}`, label: '用例', icon: '🗂', children: packageTree(`app-ucs:${app.id}`, ucs, u => ({ id: u.id, label: u.name, icon: '◦' })) })
       if (resources.length) children.push({ id: `app-resources:${app.id}`, label: '资源', icon: '🔌', children: packageTree(`app-resources:${app.id}`, resources, r => ({ id: r.id, label: r.name, icon: '🔌', tag: (data(r.id).type as string | undefined) ?? undefined })) })
+      if (metrics.length) children.push({ id: `app-metrics:${app.id}`, label: '指标', icon: '📈', children: metrics.map(m => ({ id: m.id, label: m.name, icon: '📈' })) })
       return { id: app.id, label: app.name, icon: '▸', tag: (data(app.id).type as string | undefined) ?? undefined, children }
     }),
   }

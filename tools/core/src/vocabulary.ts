@@ -265,6 +265,16 @@ export const NODE_KINDS: Record<string, NodeKindSpec> = {
     ],
     description: 'Resource — a technical integration point owned by an application (api / topic / table / cache-key / queue / file / bucket). Use cases expose api resources; entities use the others',
   },
+  'metric': {
+    kind: 'metric', idPrefix: 'met',
+    view: 'business', parents: ['application'],
+    location: BIZ('metrics'),    // app-scoped metrics resolve to APP('metrics') — see locationFor()
+    attrs: [
+      { name: 'expression', type: 'free-text' },   // how it is computed: PromQL / SQL / 口径
+      { name: 'summary', type: 'free-text' },
+    ],
+    description: 'Metric — a monitoring metric or KPI: a name and an expression. Business-level at the top of the business view, technical under an application. `measures` points at the use cases / entities it observes; anything else (data source, owner, alert) goes in `ext`',
+  },
 
   // ============ Domain layer ============
 
@@ -363,6 +373,11 @@ export const NODE_KINDS: Record<string, NodeKindSpec> = {
   },
 }
 
+// Every node entry may carry an `ext` map of free-form extension attributes (project-specific
+// metadata the vocabulary does not model: owner, data_source, ticket, ...). Tools keep it as-is,
+// validate only checks that it is a map, studio shows and edits it as JSON.
+export const EXT_ATTR = 'ext'
+
 // Closed value sets for String attrs that validate checks.
 export const RESOURCE_TYPES = ['api', 'topic', 'table', 'cache-key', 'queue', 'file', 'bucket'] as const
 // `uses` edge modes. app-use-case → entity: read / write. entity → resource: read / write for
@@ -379,6 +394,7 @@ export function locationFor(kind: string, ancestorKinds: string[]): DetailLocati
   const spec = NODE_KINDS[kind]
   if (!spec) throw new Error(`unknown node kind: ${kind}`)
   if (kind === 'entity' && ancestorKinds.includes('application')) return APP('domain')
+  if (kind === 'metric' && ancestorKinds.includes('application')) return APP('metrics')
   return spec.location
 }
 
@@ -417,6 +433,7 @@ export const REL_KINDS: Record<string, RelKindSpec> = {
     'Application scopes an entity (index nesting)'),
   'has-value-type': containment([['application', 'value-object'], ['application', 'enum'], ['entity', 'value-object']], 'has-value-type',
     'Application (or aggregate root) declares a value type (index nesting)'),
+  'has-metric': containment([['application', 'metric']], 'has-metric', 'Application owns a technical metric'),
   'has-resource': containment([['application', 'resource']], 'has-resource',
     'Application owns a technical resource (index nesting)'),
   'aggregates': containment([['entity', 'entity']], 'aggregates',
@@ -465,6 +482,10 @@ export const REL_KINDS: Record<string, RelKindSpec> = {
     kind: 'uses',
     endpoints: [
       { source: 'business-use-case', target: 'system-use-case', storage: { shape: 'string-list', field: 'uses' } },
+      // business / system use case → business-layer entity (mode: read | write); stored in `entities`
+      // because `uses` on a business use case already holds system-use-case ids
+      { source: 'business-use-case', target: 'entity', storage: { shape: 'struct-list', field: 'entities', targetField: 'target' } },
+      { source: 'system-use-case', target: 'entity', storage: { shape: 'struct-list', field: 'entities', targetField: 'target' } },
       { source: 'entity', target: 'value-object',
         storage: { shape: 'derived', source: { from: 'field-type', container: 'fields', matchNodeKind: 'value-object' } } },
       // app use case → entity (mode: read | write)
@@ -475,9 +496,15 @@ export const REL_KINDS: Record<string, RelKindSpec> = {
         storage: { shape: 'struct-list', field: 'uses', targetField: 'target' } },
     ],
     edgeAttrs: ['mode', 'note'],
-    description: 'Functional dependency: business use case invokes system use case; entity uses a value object (derived from field types); app use case uses an entity (read / write); entity uses a resource (read / write / publish / subscribe)',
+    description: 'Functional dependency: business use case invokes system use case; business / system use case uses a business-layer entity (read / write, field `entities`); entity uses a value object (derived from field types); app use case uses an entity (read / write); entity uses a resource (read / write / publish / subscribe)',
   },
 
+  'measures': {
+    kind: 'measures',
+    endpoints: ['business-use-case', 'system-use-case', 'app-use-case', 'entity'].map(target => ({ source: 'metric', target, storage: { shape: 'string-list' as const, field: 'measures' } })),
+    edgeAttrs: [],
+    description: 'Metric observes a use case (any layer) or an entity',
+  },
   'exposes': {
     kind: 'exposes',
     endpoints: [{ source: 'app-use-case', target: 'resource', storage: { shape: 'string-list', field: 'exposes' } }],
@@ -655,10 +682,11 @@ export const NODE_LAYERS: { label: string; kinds: string[] }[] = [
 export const REL_GROUPS: { label: string; kinds: string[] }[] = [
   { label: 'Ownership (implicit — index nesting)',
     kinds: ['has-uc', 'has-page', 'has-participant', 'has-role', 'has-domain-service',
-            'has-domain-event', 'has-entity', 'has-value-type', 'has-resource', 'aggregates', 'has-rule'] },
+            'has-domain-event', 'has-entity', 'has-value-type', 'has-resource', 'has-metric', 'aggregates', 'has-rule'] },
   { label: 'Provides', kinds: ['provides'] },
   { label: 'Actor', kinds: ['has-actor'] },
   { label: 'Functional dependency', kinds: ['uses', 'exposes', 'has-entry'] },
+  { label: 'Observability', kinds: ['measures'] },
   { label: 'Reference', kinds: ['references'] },
   { label: 'UML use-case relations', kinds: ['includes', 'extends'] },
   { label: 'DDD entity relations', kinds: ['composition', 'associates', 'depends-on', 'implements', 'realizes'] },
@@ -811,6 +839,8 @@ export function describeVocabularyMarkdown(): string {
     'Value-types appear in the `type` slot of attrs and fields. Primitives: ' + VALUE_TYPE_PRIMITIVES.map(p => `\`${p}\``).join(' · '),
     '', '`free-text` — intentionally unstructured prose. `field-list` — list of `- name: "Type, desc"`. `string-list` — list of strings.',
     '', 'User-defined value types are the node kinds ' + VALUE_TYPE_KINDS.map(k => `\`${k}\``).join(' · ') + '; a field type names one by its name within the same application.',
-    '', 'Composite: `List<T>` · `Optional<T>` · `Map<K, V>`.', '')
+    '', 'Composite: `List<T>` · `Optional<T>` · `Map<K, V>`.', '',
+    '---', '', '## Extension attributes', '',
+    'Every node entry may carry an `ext` map of free-form extension attributes (project-specific metadata the vocabulary does not model, e.g. `ext: { owner: 交易团队, data_source: ClickHouse }`). Tools keep it verbatim; `validate` only checks that it is a map; `--set ext.owner=…` writes into it.', '')
   return out.join('\n')
 }

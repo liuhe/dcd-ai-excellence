@@ -92,6 +92,8 @@ business:
   entity:
     - { id: ent-001, name: Customer }
     - { id: ent-002, name: Order }
+  metric:
+    - { id: met-001, name: 下单支付转化率 }
 
 applications:
   application:
@@ -127,6 +129,8 @@ business-use-case:
     name: OrderMeal
     actor: pt-001                          # has-actor（必填）
     uses: [suc-001]                        # uses → system-use-case
+    entities:
+      - { target: ent-002, mode: write }   # uses → 业务层实体（read / write）
     summary: 顾客浏览餐厅、下单并支付，直到拿到餐
 
 # business/systems.yaml
@@ -135,6 +139,8 @@ system-use-case:
     name: PlaceOrder
     actor: pt-001
     entry: auc-003                         # has-entry → 前门应用用例（customer-app.PlaceOrder）
+    entities:
+      - { target: ent-002, mode: write }   # 系统用例同样可以指向业务层实体
 
 # business/entities.yaml
 entity:
@@ -153,6 +159,14 @@ entity:
       - id: rule-001
         content: Accepted 之后顾客不能直接取消，只能走退款申请
         related_use_cases: [auc-001]
+
+# business/metrics.yaml
+metric:
+  - id: met-001
+    name: 下单支付转化率
+    expression: Paid 订单数 / Created 订单数，按日
+    measures: [buc-001, ent-002]           # measures → 用例（任一层）/ 实体
+    ext: { data_source: ClickHouse 订单事实表, owner: 交易团队 }   # 任意节点都可带 ext 扩展属性
 
 # applications/app-001-order-service/use-cases.yaml
 app-use-case:

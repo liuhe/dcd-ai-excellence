@@ -8,53 +8,98 @@ system-use-case:
     summary: 顾客选菜、填地址、提交订单
     actor: pt-001
     entry: auc-017
+    entities:
+      - target: ent-005
+        mode: write
+      - target: ent-004
+        mode: read
   - id: suc-002
     name: PayOrder
     summary: 顾客为订单付款，支付结果回写订单
     actor: pt-001
     entry: auc-018
+    entities:
+      - target: ent-007
+        mode: write
+      - target: ent-005
+        mode: write
   - id: suc-003
     name: TrackOrder
     summary: 顾客查看订单状态与骑手位置
     actor: pt-001
     entry: auc-019
+    entities:
+      - target: ent-005
+        mode: read
+      - target: ent-008
+        mode: read
   - id: suc-004
     name: AcceptOrder
     summary: 商家确认接单
     actor: pt-002
     entry: auc-022
+    entities:
+      - target: ent-005
+        mode: write
   - id: suc-005
     name: MarkOrderReady
     summary: 商家出餐完成，等待骑手取餐
     actor: pt-002
     entry: auc-023
+    entities:
+      - target: ent-005
+        mode: write
   - id: suc-006
     name: ManageMenu
     summary: 商家维护菜单与售罄状态
     actor: pt-002
     entry: auc-024
+    entities:
+      - target: ent-004
+        mode: write
   - id: suc-007
     name: DispatchRider
     summary: 系统为出餐完成的订单匹配骑手
     actor: pt-003
     entry: auc-025
+    entities:
+      - target: ent-008
+        mode: write
+      - target: ent-003
+        mode: read
   - id: suc-008
     name: CompleteDelivery
     summary: 骑手送达并完成任务
     actor: pt-003
     entry: auc-027
+    entities:
+      - target: ent-008
+        mode: write
+      - target: ent-005
+        mode: write
   - id: suc-009
     name: RequestRefund
     summary: 顾客提交退款申请
     actor: pt-001
     entry: auc-021
+    entities:
+      - target: ent-009
+        mode: write
   - id: suc-010
     name: ReviewRefund
     summary: 客服审核退款申请
     actor: bw-001
     entry: auc-028
+    entities:
+      - target: ent-009
+        mode: write
+      - target: ent-007
+        mode: write
   - id: suc-011
     name: MonitorOrders
     summary: 运营查看订单看板
     actor: bw-002
     entry: auc-029
+    entities:
+      - target: ent-005
+        mode: read

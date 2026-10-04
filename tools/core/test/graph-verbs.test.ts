@@ -142,6 +142,50 @@ describe('resources', () => {
   })
 })
 
+describe('metrics and extension attributes', () => {
+  it('business and app metrics measure use cases / entities; ext map is kept verbatim', async () => {
+    const g0 = await load()
+    const buc = resolveRef(g0, 'business-use-case:OperateMarketplace')
+    const bizOrder = g0.nodes.find(n => n.kind === 'entity' && n.name === 'Order' && !n.parent)!
+    const kpi = await addNode(root, 'metric', { name: 'TestKPI', attrs: { expression: 'paid / created', ext: { owner: 'ops', data_source: 'ClickHouse' } } })
+    expect(kpi.id).toMatch(/^met-\d{3}$/); expect(kpi.file).toBe(join(root, 'business', 'metrics.yaml'))
+    const tech = await addNode(root, 'metric', { name: 'TestLatency', parent: 'application:order-service', attrs: { expression: 'histogram_quantile(0.99, …)' } })
+    expect(tech.file).toMatch(/applications\/app-\d+-order-service\/metrics\.yaml$/)
+    await connect(root, kpi.id, 'measures', buc.id)
+    await connect(root, kpi.id, 'measures', bizOrder.id)
+    await connect(root, tech.id, 'measures', 'app-use-case:CreateOrder')
+    const g = await load()
+    expect(g.edges.filter(e => e.rel === 'measures' && e.from === kpi.id).map(e => e.to).sort()).toEqual([buc.id, bizOrder.id].sort())
+    expect(g.nodesData[kpi.id].ext).toEqual({ owner: 'ops', data_source: 'ClickHouse' })
+    await updateNode(root, kpi.id, { 'ext.team': 'trade' }, [])
+    expect((await load()).nodesData[kpi.id].ext).toEqual({ owner: 'ops', data_source: 'ClickHouse', team: 'trade' })
+    await updateNode(root, kpi.id, { ext: 'oops' }, [])
+    expect((await validateModel(root)).findings.some(f => f.code === 'attr-shape' && f.nodeId === kpi.id)).toBe(true)
+    await removeNode(root, kpi.id); await removeNode(root, tech.id)
+  })
+})
+
+describe('business-layer entity usage', () => {
+  it('business and system use cases use business entities; an application entity target is flagged', async () => {
+    const g0 = await load()
+    const buc = resolveRef(g0, 'business-use-case:OperateMarketplace')
+    const suc = resolveRef(g0, 'system-use-case:MonitorOrders')
+    const bizCustomer = g0.nodes.find(n => n.kind === 'entity' && n.name === 'Customer' && !n.parent)!
+    const appOrder = g0.nodes.find(n => n.kind === 'entity' && n.name === 'Order' && n.parent)!
+    await connect(root, buc.id, 'uses', bizCustomer.id, { mode: 'read' })
+    await connect(root, suc.id, 'uses', bizCustomer.id, { mode: 'read' })
+    await connect(root, suc.id, 'uses', appOrder.id, { mode: 'read' })
+    const g = await load()
+    expect(g.edges.find(e => e.rel === 'uses' && e.from === buc.id && e.to === bizCustomer.id)?.attrs?.mode).toBe('read')
+    expect(Array.isArray(g.nodesData[buc.id].entities)).toBe(true)
+    const { findings } = await validateModel(root)
+    expect(findings.some(f => f.code === 'layer' && f.nodeId === suc.id)).toBe(true)
+    await disconnect(root, suc.id, 'uses', appOrder.id)
+    await disconnect(root, suc.id, 'uses', bizCustomer.id)
+    await disconnect(root, buc.id, 'uses', bizCustomer.id)
+  })
+})
+
 describe('remove-node', () => {
   it('cascades through the subtree and cleans references', async () => {
     const g0 = await load()

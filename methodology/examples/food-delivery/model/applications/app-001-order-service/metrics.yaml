@@ -1,0 +1,16 @@
+metric:
+  - id: met-004
+    name: CreateOrder p99 延迟
+    expression: histogram_quantile(0.99, sum(rate(http_server_duration_bucket{route="/api/orders",method="POST"}[5m])) by (le))
+    ext:
+      data_source: Prometheus
+    measures:
+      - auc-001
+  - id: met-005
+    name: 支付回调失败率
+    expression: sum(rate(payment_callback_total{result="fail"}[5m])) / sum(rate(payment_callback_total[5m]))
+    ext:
+      data_source: Prometheus
+    measures:
+      - auc-002
+      - ent-012

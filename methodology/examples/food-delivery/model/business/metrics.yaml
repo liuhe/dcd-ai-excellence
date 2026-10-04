@@ -1,0 +1,26 @@
+metric:
+  - id: met-001
+    name: 下单支付转化率
+    expression: 当日 status 到达过 Paid 的订单数 / 当日创建的订单数
+    ext:
+      data_source: ClickHouse 订单事实表（按 order.events 回放）
+    measures:
+      - buc-001
+      - suc-001
+      - ent-005
+  - id: met-002
+    name: 平均送达时长
+    expression: avg(deliveredAt - paidAt)，按小时
+    ext:
+      data_source: ClickHouse 订单事实表
+    measures:
+      - buc-003
+      - ent-008
+  - id: met-003
+    name: 退款率
+    expression: 退款申请通过数 / 已送达订单数，按日
+    ext:
+      data_source: ClickHouse 订单事实表
+    measures:
+      - buc-004
+      - ent-009
