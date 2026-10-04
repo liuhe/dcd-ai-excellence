@@ -30,7 +30,9 @@ v7 之前（v1..v6.2 方法论迭代）的历史，见 `v6/v6.2/` 及其祖先�
 ### 2026-10-04 追加：resource（技术资源 / 集成点）
 
 - 新 node-kind `resource`（前缀 res，挂在 application 下；attrs：type / spec / summary；type 封闭取值 api / topic / table / cache-key / queue / file / bucket）
-- `dcddp import <draft.yaml>`：不带 id 的嵌套草稿一次导入（取号、放置、引用解析、校验；任一引用失败整份拒绝）。批量建模走它，增量操作走六个动词
+- `dcddp import <draft.yaml>`：不带 id 的嵌套草稿一次导入（取号、放置、引用解析、校验；任一引用失败整份拒绝）。批量建模走它，增量操作走六个动词。同名引用按源节点所在范围优先，可用 `<kind>:<祖先名>/<name>` 限定
+- 样板工程换成 `methodology/examples/food-delivery`（QuickBite 外卖平台，7 个应用，含生成它的 `draft.yaml`）；chargable-proxy 退役，6.0 迁移夹具保留
+- 修复：`init` 生成的空文件是 flow 风格 `{}`，之后 add-node 写入的整个文件都变成 JSON 样式；现在根节点强制 block 风格
 - 新 containment `has-resource`；新 rel `exposes`（app-use-case → api 资源：用例实现端点）；`uses` 新增 app-use-case → entity（mode read / write）与 entity → resource（table / cache-key / file / bucket 用 read / write，topic / queue 用 publish / subscribe）两条端点。数据路径：用例 → 实体 → 存储 / 消息
 - validate 检查 resource.type、uses.mode 与资源类型的匹配、exposes 目标必须为 api、边端点 kind 必须在 vocabulary 允许之列（bad-endpoint）；studio：应用下"资源"组、用例页"接口 / 使用的实体"、实体页"使用的资源 / 被哪些用例使用"、资源页"由哪些用例实现 / 被哪些实体使用"，表单一步建资源并连边
 - schema NOTE 19、建模约定 §11.5

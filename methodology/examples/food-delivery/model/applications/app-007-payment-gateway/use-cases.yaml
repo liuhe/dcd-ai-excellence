@@ -1,0 +1,12 @@
+app-use-case:
+  - id: auc-030
+    name: ProcessPayment
+    rules:
+      - id: rule-047
+        content: 顾客在收银台完成付款；结果通过回调通知 order-service
+    actor: ep-004
+  - id: auc-031
+    name: NotifyPaymentResult
+    actor: ep-004
+    includes:
+      - auc-002

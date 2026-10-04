@@ -1,0 +1,25 @@
+app-use-case:
+  - id: auc-025
+    name: ReceiveTaskOffer
+    rules:
+      - id: rule-042
+        content: 推送弹窗显示餐厅、送达地址、预计收入，30 秒倒计时
+    actor: pt-003
+    includes:
+      - auc-013
+  - id: auc-026
+    name: ReportLocation
+    rules:
+      - id: rule-043
+        content: 上线期间后台每 5 秒上报一次位置
+    actor: pt-003
+    includes:
+      - auc-014
+  - id: auc-027
+    name: FinishDelivery
+    rules:
+      - id: rule-044
+        content: 到店点击"已取餐"，送达点击"已送达"；两步都走 CompleteDelivery
+    actor: pt-003
+    includes:
+      - auc-015

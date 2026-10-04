@@ -112,7 +112,7 @@ Handle 必须在插入、删除、并发编辑面前保持稳定。数组下标�
 
 - `value-object:UsageRecord` — 离开谁用它也照样是个类型定义 → node
 - `aggregate` — 一个聚合离开"根 + 成员"就没内容了；它就是"这组东西属于同一聚合"这件事本身 → edge (`aggregates`)
-- `external-party:Taobao` — 离开使用它的 BUC 依然存在 → node
+- `external-party:PaymentProvider` — 离开使用它的 BUC 依然存在 → node
 - `actor`（"BUC 由谁执行"的连接语义）— 单看没意义，是描述连接本身 → edge (`has-actor`)，其中执行者本身是 node
 
 ### 3.2 被多处引用（Reference Multiplicity）
@@ -122,7 +122,7 @@ Handle 必须在插入、删除、并发编辑面前保持稳定。数组下标�
 - 是 → **node**（值得抽出去共享，避免重复描述）
 - 否，只属于一个宿主 → **attribute** 或 embedded
 
-- `entity:Package` — 被 Account / PackageTemplate / ... 多方引用 → node
+- `entity:Order` — 被 Payment / Delivery / RefundRequest 多方引用 → node
 - `field` — 只属于某个 entity 的 schema，没别处引用 → attribute（`entity.fields[]`）
 
 ### 3.3 集合语义 vs 实体语义（Set-Semantics vs Entity-Semantics）

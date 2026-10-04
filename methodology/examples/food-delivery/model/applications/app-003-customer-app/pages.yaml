@@ -1,0 +1,33 @@
+page:
+  - id: pg-001
+    name: RestaurantListPage
+    display_mappings:
+      - 餐厅卡片：名称、距离、评分、营业状态
+    related_use_cases:
+      - auc-016
+  - id: pg-002
+    name: MenuPage
+    display_mappings:
+      - 菜品列表与售罄标记
+      - 底部购物车条：数量与小计
+    related_use_cases:
+      - auc-016
+      - auc-017
+  - id: pg-003
+    name: CheckoutPage
+    display_mappings:
+      - 收货地址、订单行、配送费、应付总额
+      - 支付方式选择
+    related_use_cases:
+      - auc-017
+      - auc-018
+  - id: pg-004
+    name: OrderTrackingPage
+    display_mappings:
+      - 状态时间线：已支付 / 已接单 / 已出餐 / 配送中 / 已送达
+      - 配送中显示地图与骑手位置
+      - 取消与退款入口按状态显隐
+    related_use_cases:
+      - auc-019
+      - auc-020
+      - auc-021

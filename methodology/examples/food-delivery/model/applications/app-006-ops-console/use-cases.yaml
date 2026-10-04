@@ -1,0 +1,17 @@
+app-use-case:
+  - id: auc-028
+    name: ReviewRefundRequest
+    rules:
+      - id: rule-045
+        content: 列表只显示 Submitted 的申请；审核时展示订单、支付与配送详情
+    actor: bw-001
+    includes:
+      - auc-010
+  - id: auc-029
+    name: ViewOrderBoard
+    rules:
+      - id: rule-046
+        content: 按状态统计订单数；高亮支付后 5 分钟未接单与出餐后 10 分钟未派出的订单
+    actor: bw-002
+    includes:
+      - auc-004

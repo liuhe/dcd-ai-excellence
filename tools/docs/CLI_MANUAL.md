@@ -159,7 +159,7 @@ dcddp connect entity:ClaudeSession --rel uses --to resource:session.events --set
 | 该 rel 的存储字段名 | 同上（`actor` 等价于 `has-actor`） |
 | 其他 | 当属性原样写入 |
 
-引用写 `<kind>:<name>`、裸名字（在该关系允许的目标 kind 内唯一，草稿与现有模型一起算）、或已有节点 id。草稿内节点可以互相引用，不分先后。
+引用写 `<kind>:<name>`、裸名字（在该关系允许的目标 kind 内唯一，草稿与现有模型一起算）、或已有节点 id。同名时优先取与源节点同一应用 / 同一系统 / 同在业务视图里的那个，节点不会解析成自己（应用实体 `realizes` 同名业务实体直接写 `entity:Order` 即可）；仍然歧义就加祖先名限定：`<kind>:<祖先名>/<name>`，如 `entity:order-service/Order`、`entity:business/Delivery`、`app-use-case:ops-console/ReviewRefundRequest`。草稿内节点可以互相引用，不分先后。
 
 ```yaml
 business-worker:

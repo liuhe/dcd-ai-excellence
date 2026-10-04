@@ -1,0 +1,756 @@
+# 组织由 `dcddp init --org QuickBite` 创建（singleton），这里不重复声明；summary 与 provides 在导入后用 update-node / connect 补上
+business-worker:
+  - name: CustomerService
+    summary: 客服：处理退款审核与投诉
+  - name: OpsManager
+    summary: 运营：监控订单流转与平台指标
+external-party:
+  - name: Customers
+    summary: 使用平台点餐的个人用户
+    participant:
+      - { name: Customer, type: person }
+  - name: Restaurants
+    summary: 入驻平台的餐厅商家
+    participant:
+      - { name: Merchant, type: person }
+  - name: Riders
+    summary: 承接配送任务的众包骑手
+    participant:
+      - { name: Rider, type: person }
+  - name: PaymentProvider
+    type: system
+    summary: 第三方支付机构（微信支付 / 支付宝），本系统对接其支付与退款接口
+business-use-case:
+  - name: OrderMeal
+    summary: 顾客浏览餐厅、下单并支付，直到拿到餐
+    actor: Customer
+    stakeholder_interests:
+      - { stakeholder: Customer, interest: 快速找到想吃的餐厅，付款后能实时看到订单进度 }
+      - { stakeholder: Merchant, interest: 订单信息准确，付款后才进入出餐流程 }
+      - { stakeholder: OpsManager, interest: 下单到送达的转化率与时效可度量 }
+    uses: [PlaceOrder, PayOrder, TrackOrder]
+  - name: PrepareOrder
+    summary: 商家接单、备餐并标记可取餐
+    actor: Merchant
+    stakeholder_interests:
+      - { stakeholder: Merchant, interest: 新订单及时提醒，菜单可随时调整 }
+      - { stakeholder: Customer, interest: 商家超时未接单时自动取消并退款 }
+    uses: [AcceptOrder, MarkOrderReady, ManageMenu]
+  - name: DeliverOrder
+    summary: 骑手接到配送任务，取餐并送达顾客
+    actor: Rider
+    stakeholder_interests:
+      - { stakeholder: Rider, interest: 任务分配就近合理，路线清晰 }
+      - { stakeholder: Customer, interest: 能看到骑手实时位置与预计送达时间 }
+    uses: [DispatchRider, CompleteDelivery]
+  - name: ResolveAfterSale
+    summary: 顾客对订单提出退款，小额自动通过，其余由客服审核
+    actor: Customer
+    stakeholder_interests:
+      - { stakeholder: Customer, interest: 退款流程简单，小额秒退 }
+      - { stakeholder: CustomerService, interest: 只处理需要人工判断的申请 }
+    uses: [RequestRefund, ReviewRefund]
+  - name: OperateMarketplace
+    summary: 运营监控全平台订单流转，发现异常
+    actor: OpsManager
+    stakeholder_interests:
+      - { stakeholder: OpsManager, interest: 实时看到各环节积压与超时订单 }
+    uses: [MonitorOrders]
+system:
+  - name: QuickBitePlatform
+    summary: 支撑上述业务用例的软件系统整体
+    system-use-case:
+      - { name: PlaceOrder, summary: 顾客选菜、填地址、提交订单, actor: Customer, entry: app-use-case:PlaceOrder }
+      - { name: PayOrder, summary: 顾客为订单付款，支付结果回写订单, actor: Customer, entry: PayForOrder }
+      - { name: TrackOrder, summary: 顾客查看订单状态与骑手位置, actor: Customer, entry: TrackMyOrder }
+      - { name: AcceptOrder, summary: 商家确认接单, actor: Merchant, entry: AcceptIncomingOrder }
+      - { name: MarkOrderReady, summary: 商家出餐完成，等待骑手取餐, actor: Merchant, entry: MarkReadyForPickup }
+      - { name: ManageMenu, summary: 商家维护菜单与售罄状态, actor: Merchant, entry: EditMenu }
+      - { name: DispatchRider, summary: 系统为出餐完成的订单匹配骑手, actor: Rider, entry: ReceiveTaskOffer }
+      - { name: CompleteDelivery, summary: 骑手送达并完成任务, actor: Rider, entry: FinishDelivery }
+      - { name: RequestRefund, summary: 顾客提交退款申请, actor: Customer, entry: RequestRefund }
+      - { name: ReviewRefund, summary: 客服审核退款申请, actor: CustomerService, entry: ops-console/ReviewRefundRequest }
+      - { name: MonitorOrders, summary: 运营查看订单看板, actor: OpsManager, entry: ViewOrderBoard }
+entity:
+  - name: Customer
+    archetype: role
+    summary: 在平台点餐的顾客
+    fields:
+      - id: "Long, 主键"
+      - name: "String, 昵称"
+      - phone: "String, 手机号，登录凭证"
+      - defaultAddress: "String, 默认收货地址"
+    rule:
+      - { content: 手机号在全平台唯一, field: phone }
+  - name: Restaurant
+    archetype: role
+    summary: 入驻商家的门店
+    fields:
+      - id: "Long, 主键"
+      - name: "String, 门店名"
+      - address: "String, 门店地址"
+      - status: "RestaurantStatus(Open/Closed), 营业状态"
+    state_machine:
+      field: status
+      states: [Open, Closed]
+      transitions:
+        - { from: Closed, to: Open, trigger: 商家开始营业 }
+        - { from: Open, to: Closed, trigger: 商家打烊或被运营下线 }
+    rule:
+      - { content: Closed 状态的门店不接受新订单, field: status }
+  - name: Rider
+    archetype: role
+    summary: 众包骑手
+    fields:
+      - id: "Long, 主键"
+      - name: "String, 姓名"
+      - phone: "String, 手机号"
+      - status: "RiderStatus(Offline/Available/Busy), 接单状态"
+    state_machine:
+      field: status
+      states: [Offline, Available, Busy]
+      transitions:
+        - { from: Offline, to: Available, trigger: 骑手上线 }
+        - { from: Available, to: Busy, trigger: 接受配送任务 }
+        - { from: Busy, to: Available, trigger: 完成配送 }
+        - { from: Available, to: Offline, trigger: 骑手下线 }
+  - name: MenuItem
+    archetype: description
+    summary: 餐厅菜单上的一道菜，被订单行引用
+    fields:
+      - id: "Long, 主键"
+      - restaurantId: "Long, 引用 Restaurant"
+      - name: "String, 菜名"
+      - price: "BigDecimal, 单价（元）"
+      - available: "Boolean, 是否在售（售罄为 false）"
+    rule:
+      - { content: 单价必须大于 0, field: price }
+      - { content: 售罄的菜品仍显示在菜单上但不可加入订单, field: available }
+    relationships:
+      - { kind: associates, target: Restaurant, cardinality: many-to-one, via: restaurantId }
+  - name: Order
+    archetype: moment-interval
+    summary: 一次点餐交易：从创建到送达或取消的全过程
+    fields:
+      - id: "Long, 主键"
+      - customerId: "Long, 引用 Customer"
+      - restaurantId: "Long, 引用 Restaurant"
+      - totalAmount: "BigDecimal, 应付总额 = 各行小计 + 配送费"
+      - deliveryAddress: "String, 收货地址快照"
+      - status: "OrderStatus(Created/Paid/Accepted/Ready/Delivering/Delivered/Cancelled/Refunded), 订单状态"
+      - createdAt: "LocalDateTime, 创建时间"
+      - paidAt: "LocalDateTime, 支付时间，未支付为空"
+      - deliveredAt: "LocalDateTime, 送达时间，未送达为空"
+    state_machine:
+      field: status
+      states: [Created, Paid, Accepted, Ready, Delivering, Delivered, Cancelled, Refunded]
+      transitions:
+        - { from: Created, to: Paid, trigger: 支付成功回调 }
+        - { from: Created, to: Cancelled, trigger: 顾客取消或 15 分钟未支付 }
+        - { from: Paid, to: Accepted, trigger: 商家接单 }
+        - { from: Paid, to: Cancelled, trigger: 商家 5 分钟未接单，自动取消并退款 }
+        - { from: Accepted, to: Ready, trigger: 商家标记出餐完成 }
+        - { from: Ready, to: Delivering, trigger: 骑手取餐 }
+        - { from: Delivering, to: Delivered, trigger: 骑手确认送达 }
+        - { from: Delivered, to: Refunded, trigger: 退款申请通过 }
+      summary: Cancelled 的已支付订单自动走全额退款，不经过 Refunded 状态
+    rule:
+      - { content: 总额由订单行小计与配送费计算得出，不接受客户端传入, field: totalAmount }
+      - { content: Accepted 之后顾客不能直接取消，只能走退款申请, field: status }
+      - { content: 同一顾客同一餐厅 1 分钟内重复提交视为同一订单（幂等） }
+    relationships:
+      - { kind: associates, target: Customer, cardinality: many-to-one, via: customerId }
+      - { kind: associates, target: Restaurant, cardinality: many-to-one, via: restaurantId }
+      - { kind: composition, target: OrderLine, cardinality: one-to-many, note: 订单行随订单创建与删除 }
+  - name: OrderLine
+    archetype: mi-detail
+    summary: 订单中的一道菜及数量
+    fields:
+      - id: "Long, 主键"
+      - orderId: "Long, 引用 Order"
+      - menuItemId: "Long, 引用 MenuItem"
+      - quantity: "Integer, 数量"
+      - unitPrice: "BigDecimal, 下单时的单价快照"
+    rule:
+      - { content: 数量至少为 1, field: quantity }
+      - { content: 单价取下单时刻的菜品价格，之后菜单改价不影响已有订单, field: unitPrice }
+    relationships:
+      - { kind: associates, target: MenuItem, cardinality: many-to-one, via: menuItemId }
+  - name: Payment
+    archetype: moment-interval
+    summary: 一笔订单的支付记录，由支付机构回调确认
+    fields:
+      - id: "Long, 主键"
+      - orderId: "Long, 引用 Order"
+      - amount: "BigDecimal, 支付金额"
+      - method: "PaymentMethod(Wechat/Alipay), 支付方式"
+      - providerTxnId: "String, 支付机构交易号"
+      - status: "PaymentStatus(Pending/Succeeded/Failed/Refunded), 支付状态"
+      - createdAt: "LocalDateTime, 发起时间"
+    state_machine:
+      field: status
+      states: [Pending, Succeeded, Failed, Refunded]
+      transitions:
+        - { from: Pending, to: Succeeded, trigger: 支付机构回调成功 }
+        - { from: Pending, to: Failed, trigger: 支付机构回调失败或超时 }
+        - { from: Succeeded, to: Refunded, trigger: 退款执行成功 }
+    rule:
+      - { content: 支付金额必须等于订单总额, field: amount }
+      - { content: 同一 providerTxnId 的回调只处理一次（幂等）, field: providerTxnId }
+    relationships:
+      - { kind: associates, target: Order, cardinality: one-to-one, via: orderId }
+  - name: Delivery
+    archetype: moment-interval
+    summary: 一次配送：骑手从取餐到送达
+    fields:
+      - id: "Long, 主键"
+      - orderId: "Long, 引用 Order"
+      - riderId: "Long, 引用 Rider"
+      - status: "DeliveryStatus(Assigned/PickedUp/Delivered), 配送状态"
+      - assignedAt: "LocalDateTime, 派单时间"
+      - deliveredAt: "LocalDateTime, 送达时间"
+    state_machine:
+      field: status
+      states: [Assigned, PickedUp, Delivered]
+      transitions:
+        - { from: Assigned, to: PickedUp, trigger: 骑手到店取餐 }
+        - { from: PickedUp, to: Delivered, trigger: 骑手确认送达 }
+    relationships:
+      - { kind: associates, target: Order, cardinality: one-to-one, via: orderId }
+      - { kind: associates, target: Rider, cardinality: many-to-one, via: riderId }
+  - name: RefundRequest
+    archetype: moment-interval
+    summary: 顾客对订单发起的退款申请
+    fields:
+      - id: "Long, 主键"
+      - orderId: "Long, 引用 Order"
+      - amount: "BigDecimal, 申请退款金额"
+      - reason: "String, 退款原因"
+      - status: "RefundStatus(Submitted/Approved/Rejected), 审核状态"
+      - createdAt: "LocalDateTime, 申请时间"
+    rule:
+      - { content: 金额不超过 20 元且骑手尚未取餐的申请自动通过，其余进入客服审核, field: amount }
+      - { content: 同一订单同时只能有一个未结束的退款申请 }
+    relationships:
+      - { kind: associates, target: Order, cardinality: many-to-one, via: orderId }
+application:
+  - name: order-service
+    type: backend
+    summary: 订单核心服务：订单、支付、退款、菜单的所有写操作与状态流转
+    tech_stack:
+      language: Java
+      frameworks: [Spring Boot, Spring Data JPA]
+      storage: MySQL
+      messaging: Kafka
+      cache: Redis
+    infrastructure:
+      - { name: MySQL, type: database, description: 订单、支付、退款、菜单的持久化 }
+      - { name: Kafka, type: message-broker, description: 发布订单事件，供配送与通知消费 }
+      - { name: Redis, type: cache, description: 订单状态快照，供高频查询 }
+    app-use-case:
+      - name: CreateOrder
+        package: Ordering
+        actor: customer-app
+        api: [POST /api/orders]
+        exposes: ["POST /api/orders"]
+        uses:
+          - { target: entity:Order, mode: write }
+          - { target: entity:MenuItem, mode: read }
+        rule:
+          - { content: 校验餐厅 Open、每道菜 available，任一不满足返回 409 }
+          - { content: 以当前菜单价生成订单行快照，服务端计算总额，返回订单 id 与应付金额 }
+          - { content: 订单创建后 15 分钟未支付由定时任务自动取消 }
+      - name: ConfirmPayment
+        package: Ordering
+        actor: payment-gateway
+        api: [POST /api/payments/callback]
+        exposes: ["POST /api/payments/callback"]
+        uses:
+          - { target: entity:Payment, mode: write }
+          - { target: entity:Order, mode: write }
+        rule:
+          - { content: 校验回调签名，校验失败返回 400 并告警 }
+          - { content: 按 providerTxnId 幂等；成功则 Payment → Succeeded、Order → Paid 并发布 OrderPaid }
+      - name: CancelOrder
+        package: Ordering
+        actor: customer-app
+        api: ["POST /api/orders/{id}/cancel"]
+        exposes: ["POST /api/orders/{id}/cancel"]
+        uses:
+          - { target: entity:Order, mode: write }
+        rule:
+          - { content: 仅 Created / Paid 状态可取消；Paid 状态取消时自动发起全额退款 }
+      - name: GetOrderStatus
+        package: Ordering
+        actor: customer-app
+        api: ["GET /api/orders/{id}"]
+        exposes: ["GET /api/orders/{id}"]
+        uses:
+          - { target: entity:Order, mode: read }
+        rule:
+          - { content: 优先读 Redis 状态快照，未命中回源 MySQL 并回填 }
+      - name: AcceptOrder
+        package: Merchant
+        actor: merchant-console
+        api: ["POST /api/orders/{id}/accept"]
+        exposes: ["POST /api/orders/{id}/accept"]
+        uses:
+          - { target: entity:Order, mode: write }
+        rule:
+          - { content: 仅 Paid 状态可接单；Paid 后 5 分钟未接单由定时任务取消并退款 }
+          - { content: 接单后发布 OrderAccepted }
+      - name: MarkOrderReady
+        package: Merchant
+        actor: merchant-console
+        api: ["POST /api/orders/{id}/ready"]
+        exposes: ["POST /api/orders/{id}/ready"]
+        uses:
+          - { target: entity:Order, mode: write }
+        rule:
+          - { content: 仅 Accepted 状态可标记；标记后发布 OrderReady，触发派单 }
+      - name: UpdateMenu
+        package: Merchant
+        actor: merchant-console
+        api: ["PUT /api/restaurants/{id}/menu"]
+        exposes: ["PUT /api/restaurants/{id}/menu"]
+        uses:
+          - { target: entity:MenuItem, mode: write }
+        rule:
+          - { content: 整体替换菜单；已有订单行的单价快照不受影响 }
+      - name: RecordDeliveryProgress
+        package: Delivery
+        actor: dispatch-service
+        api: ["POST /api/deliveries/{id}/progress"]
+        exposes: ["POST /api/deliveries/{id}/progress"]
+        uses:
+          - { target: entity:Delivery, mode: write }
+          - { target: entity:Order, mode: write }
+        rule:
+          - { content: 取餐 → Order Delivering；送达 → Order Delivered 并发布 OrderDelivered }
+      - name: SubmitRefundRequest
+        package: AfterSale
+        actor: customer-app
+        api: [POST /api/refunds]
+        exposes: ["POST /api/refunds"]
+        uses:
+          - { target: entity:RefundRequest, mode: write }
+          - { target: entity:Order, mode: read }
+        includes: [ExecuteRefund]
+        rule:
+          - { content: 按 RefundPolicy 判定：自动通过的直接 include ExecuteRefund，否则置为 Submitted 等待审核 }
+      - name: ReviewRefundRequest
+        package: AfterSale
+        actor: ops-console
+        api: ["POST /api/refunds/{id}/review"]
+        exposes: ["POST /api/refunds/{id}/review"]
+        uses:
+          - { target: entity:RefundRequest, mode: write }
+        includes: [ExecuteRefund]
+        rule:
+          - { content: 通过则 include ExecuteRefund；拒绝需填写理由并通知顾客 }
+      - name: ExecuteRefund
+        package: AfterSale
+        uses:
+          - { target: entity:Payment, mode: write }
+          - { target: entity:Order, mode: write }
+        rule:
+          - { content: 调用支付机构退款接口；成功后 Payment → Refunded、Order → Refunded }
+          - { content: 退款接口失败进入重试队列，最多重试 3 次后告警 }
+    entity:
+      - name: Order
+        summary: 订单聚合根：订单行随之创建与删除，总额由行计算
+        fields:
+          - id: "Long, 主键"
+          - customerId: "Long, 顾客"
+          - restaurantId: "Long, 餐厅"
+          - lines: "List<OrderLine>, 订单行"
+          - deliveryAddress: "DeliveryAddress, 收货地址值对象"
+          - totalAmount: "Money, 应付总额"
+          - status: "OrderStatus, 状态"
+          - createdAt: "LocalDateTime, 创建时间"
+        invariants:
+          - 至少有一条订单行
+          - totalAmount 等于所有行小计之和加配送费，任何修改行的操作都重新计算
+        repository:
+          name: OrderRepository
+          operations: [findById, save, findUnpaidOlderThan, findPaidNotAcceptedOlderThan]
+        relationships:
+          - { kind: realizes, target: entity:Order }
+          - { kind: implements, target: role:Priceable }
+        uses:
+          - { target: t_order, mode: write }
+          - { target: "order:{id}:status", mode: write }
+          - { target: order.events, mode: publish }
+        emits: [OrderPaid, OrderAccepted, OrderReady, OrderDelivered]
+        entity:
+          - name: OrderLine
+            summary: 聚合内实体：订单行
+            fields:
+              - menuItemId: "Long, 菜品"
+              - name: "String, 菜名快照"
+              - quantity: "Integer, 数量"
+              - unitPrice: "Money, 单价快照"
+            relationships:
+              - { kind: realizes, target: entity:OrderLine }
+        value-object:
+          - name: DeliveryAddress
+            fields:
+              - receiver: "String, 收货人"
+              - phone: "String, 联系电话"
+              - detail: "String, 详细地址"
+              - lat: "Double, 纬度"
+              - lng: "Double, 经度"
+      - name: Payment
+        summary: 支付记录
+        fields:
+          - id: "Long, 主键"
+          - orderId: "Long, 订单"
+          - amount: "Money, 金额"
+          - method: "PaymentMethod, 支付方式"
+          - providerTxnId: "String, 支付机构交易号"
+          - status: "PaymentStatus, 状态"
+        repository:
+          name: PaymentRepository
+          operations: [findByOrderId, findByProviderTxnId, save]
+        relationships:
+          - { kind: realizes, target: entity:Payment }
+        uses:
+          - { target: t_payment, mode: write }
+        emits: [PaymentSucceeded]
+      - name: RefundRequest
+        summary: 退款申请
+        fields:
+          - id: "Long, 主键"
+          - orderId: "Long, 订单"
+          - amount: "Money, 金额"
+          - reason: "String, 原因"
+          - status: "RefundStatus, 状态"
+        repository:
+          name: RefundRequestRepository
+          operations: [findById, findOpenByOrderId, save]
+        relationships:
+          - { kind: realizes, target: entity:RefundRequest }
+      - name: Delivery
+        summary: 配送记录（本服务只记录进度，派单在 dispatch-service）
+        fields:
+          - id: "Long, 主键"
+          - orderId: "Long, 订单"
+          - riderId: "Long, 骑手"
+          - status: "DeliveryStatus, 状态"
+        repository:
+          name: DeliveryRepository
+          operations: [findByOrderId, save]
+        relationships:
+          - { kind: realizes, target: entity:Delivery }
+    value-object:
+      - name: Money
+        fields:
+          - amount: "BigDecimal, 金额"
+          - currency: "String, 币种，固定 CNY"
+    enum:
+      - { name: OrderStatus, values: [Created, Paid, Accepted, Ready, Delivering, Delivered, Cancelled, Refunded] }
+      - { name: PaymentMethod, values: [Wechat, Alipay] }
+      - { name: PaymentStatus, values: [Pending, Succeeded, Failed, Refunded] }
+      - { name: RefundStatus, values: [Submitted, Approved, Rejected] }
+      - { name: DeliveryStatus, values: [Assigned, PickedUp, Delivered] }
+    role:
+      - name: Priceable
+        methods: ["total(): Money, 计算应付总额"]
+        summary: 可计价的东西：订单实现它，未来购物车也可以
+    domain-service:
+      - name: PricingService
+        operations: ["quote(lines, deliveryDistance): Money, 行小计 + 按距离阶梯计费的配送费"]
+        summary: 定价规则跨订单与餐厅配置，不属于单一聚合
+      - name: RefundPolicy
+        operations: ["decide(request, order, delivery): AutoApprove | NeedsReview, 小额且未取餐自动通过"]
+        summary: 退款判定规则集中在此，便于运营调整阈值
+      - name: OrderTimeoutScheduler
+        operations: ["cancelUnpaid(): 取消超过 15 分钟未支付的订单", "cancelNotAccepted(): 取消支付后 5 分钟未接单的订单并退款"]
+        handles: [OrderPaid]
+    domain-event:
+      - name: OrderPaid
+        published_when: Order 从 Created 转入 Paid
+        payload: [{ orderId: Long }, { restaurantId: Long }, { amount: Money }]
+      - name: OrderAccepted
+        published_when: 商家接单
+        payload: [{ orderId: Long }]
+      - name: OrderReady
+        published_when: 商家出餐完成，需要派单
+        payload: [{ orderId: Long }, { restaurantLat: Double }, { restaurantLng: Double }, { deliveryLat: Double }, { deliveryLng: Double }]
+      - name: OrderDelivered
+        published_when: 骑手确认送达
+        payload: [{ orderId: Long }, { deliveredAt: LocalDateTime }]
+      - name: PaymentSucceeded
+        published_when: 支付机构回调成功
+        payload: [{ orderId: Long }, { paymentId: Long }]
+    resource:
+      - { name: "POST /api/orders", type: api, spec: "body: { restaurantId, lines[{menuItemId, quantity}], deliveryAddress }" }
+      - { name: "POST /api/payments/callback", type: api, spec: 支付机构回调，签名在 header }
+      - { name: "POST /api/orders/{id}/cancel", type: api }
+      - { name: "GET /api/orders/{id}", type: api, spec: 返回订单、支付、配送状态与骑手位置 }
+      - { name: "POST /api/orders/{id}/accept", type: api }
+      - { name: "POST /api/orders/{id}/ready", type: api }
+      - { name: "PUT /api/restaurants/{id}/menu", type: api }
+      - { name: "POST /api/deliveries/{id}/progress", type: api, spec: "body: { stage: PickedUp | Delivered }" }
+      - { name: "POST /api/refunds", type: api }
+      - { name: "POST /api/refunds/{id}/review", type: api, spec: "body: { approve: boolean, reason? }" }
+      - { name: order.events, type: topic, spec: "key = orderId；事件类型 OrderPaid / OrderAccepted / OrderReady / OrderDelivered" }
+      - { name: t_order, type: table, spec: 订单主表，订单行在 t_order_line }
+      - { name: t_payment, type: table }
+      - { name: "order:{id}:status", type: cache-key, spec: 订单状态快照，TTL 1 小时 }
+  - name: dispatch-service
+    type: backend
+    summary: 派单服务：消费出餐事件，就近匹配骑手，跟踪骑手位置
+    tech_stack:
+      language: Go
+      storage: Redis (GEO)
+      messaging: Kafka
+    infrastructure:
+      - { name: Redis, type: cache, description: 骑手实时位置（GEO）与任务状态 }
+      - { name: Kafka, type: message-broker, description: 消费 order.events }
+    app-use-case:
+      - name: AssignRider
+        package: Dispatch
+        uses:
+          - { target: entity:DeliveryTask, mode: write }
+        rule:
+          - { content: 订阅 order.events 的 OrderReady；按餐厅坐标 3 公里内找 Available 骑手，按距离与当前任务数排序 }
+          - { content: 向排名第一的骑手推送任务，30 秒未接受则推给下一位；连续 3 轮无人接受告警并扩大半径 }
+      - name: AcceptDeliveryTask
+        package: Dispatch
+        actor: rider-app
+        api: ["POST /api/tasks/{id}/accept"]
+        exposes: ["POST /api/tasks/{id}/accept"]
+        uses:
+          - { target: entity:DeliveryTask, mode: write }
+        rule:
+          - { content: 任务仍为 Offered 且推送对象是本骑手时才能接受；接受后 Rider → Busy }
+      - name: TrackRiderLocation
+        package: Tracking
+        actor: rider-app
+        api: ["POST /api/riders/{id}/location"]
+        exposes: ["POST /api/riders/{id}/location"]
+        uses:
+          - { target: entity:RiderPosition, mode: write }
+        rule:
+          - { content: 每 5 秒上报一次，写入 Redis GEO；超过 60 秒未上报视为离线 }
+      - name: CompleteDelivery
+        package: Dispatch
+        actor: rider-app
+        api: ["POST /api/tasks/{id}/complete"]
+        exposes: ["POST /api/tasks/{id}/complete"]
+        uses:
+          - { target: entity:DeliveryTask, mode: write }
+        includes: [RecordDeliveryProgress]
+        rule:
+          - { content: 取餐与送达两个阶段都通过本接口上报；每次都 include RecordDeliveryProgress 同步给 order-service }
+    entity:
+      - name: DeliveryTask
+        summary: 派单任务：从生成到骑手完成
+        fields:
+          - id: "Long, 主键"
+          - orderId: "Long, 订单"
+          - riderId: "Long, 当前推送或已接受的骑手"
+          - status: "TaskStatus, 状态"
+          - offeredAt: "LocalDateTime, 本轮推送时间"
+        state_machine:
+          field: status
+          states: [Pending, Offered, Accepted, PickedUp, Completed]
+          transitions:
+            - { from: Pending, to: Offered, trigger: 推送给某骑手 }
+            - { from: Offered, to: Pending, trigger: 30 秒未接受，回到待派 }
+            - { from: Offered, to: Accepted, trigger: 骑手接受 }
+            - { from: Accepted, to: PickedUp, trigger: 骑手取餐 }
+            - { from: PickedUp, to: Completed, trigger: 骑手送达 }
+        repository:
+          name: DeliveryTaskRepository
+          operations: [findByOrderId, findOfferedExpired, save]
+        relationships:
+          - { kind: realizes, target: entity:business/Delivery }
+        uses:
+          - { target: order.events, mode: subscribe }
+          - { target: "task:{id}", mode: write }
+        emits: [TaskAccepted]
+      - name: RiderPosition
+        summary: 骑手最新位置，只存 Redis
+        fields:
+          - riderId: "Long, 骑手"
+          - geo: "GeoPoint, 坐标"
+          - reportedAt: "LocalDateTime, 上报时间"
+        uses:
+          - { target: "rider:geo", mode: write }
+    value-object:
+      - name: GeoPoint
+        fields:
+          - lat: "Double, 纬度"
+          - lng: "Double, 经度"
+    enum:
+      - { name: TaskStatus, values: [Pending, Offered, Accepted, PickedUp, Completed] }
+    domain-service:
+      - name: RiderMatcher
+        operations: ["candidates(restaurantGeo, radiusKm): List<RiderId>, Redis GEO 半径查询后按任务数排序"]
+        handles: [OrderReady]
+    domain-event:
+      - name: TaskAccepted
+        published_when: 骑手接受任务
+        payload: [{ taskId: Long }, { riderId: Long }, { orderId: Long }]
+    resource:
+      - { name: "POST /api/tasks/{id}/accept", type: api }
+      - { name: "POST /api/riders/{id}/location", type: api, spec: "body: { lat, lng }" }
+      - { name: "POST /api/tasks/{id}/complete", type: api, spec: "body: { stage: PickedUp | Delivered }" }
+      - { name: "rider:geo", type: cache-key, spec: Redis GEO 集合，member = riderId }
+      - { name: "task:{id}", type: cache-key, spec: 任务状态与当前推送骑手 }
+  - name: customer-app
+    type: frontend
+    summary: 顾客端 App（iOS / Android）
+    tech_stack:
+      language: TypeScript
+      frameworks: [React Native]
+    app-use-case:
+      - name: BrowseRestaurants
+        package: Ordering
+        actor: Customer
+        rule:
+          - { content: 按距离与评分排序展示营业中的餐厅；打烊餐厅置灰并标注 }
+      - name: PlaceOrder
+        package: Ordering
+        actor: Customer
+        includes: [CreateOrder]
+        rule:
+          - { content: 购物车本地维护；提交时调用 CreateOrder，展示服务端返回的应付金额 }
+      - name: PayForOrder
+        package: Ordering
+        actor: Customer
+        includes: [ProcessPayment, GetOrderStatus]
+        rule:
+          - { content: 拉起支付机构收银台；支付完成后轮询 GetOrderStatus 直到 Paid 或超时 }
+      - name: TrackMyOrder
+        package: Ordering
+        actor: Customer
+        includes: [GetOrderStatus]
+        rule:
+          - { content: 每 10 秒刷新订单状态；Delivering 阶段在地图上显示骑手位置 }
+      - name: CancelMyOrder
+        package: AfterSale
+        actor: Customer
+        includes: [CancelOrder]
+      - name: RequestRefund
+        package: AfterSale
+        actor: Customer
+        includes: [SubmitRefundRequest]
+        rule:
+          - { content: 选择退款原因与金额；自动通过的申请即时提示到账时间 }
+    page:
+      - name: RestaurantListPage
+        display_mappings: [餐厅卡片：名称、距离、评分、营业状态]
+        related_use_cases: [BrowseRestaurants]
+      - name: MenuPage
+        display_mappings: [菜品列表与售罄标记, 底部购物车条：数量与小计]
+        related_use_cases: [BrowseRestaurants, PlaceOrder]
+      - name: CheckoutPage
+        display_mappings: [收货地址、订单行、配送费、应付总额, 支付方式选择]
+        related_use_cases: [PlaceOrder, PayForOrder]
+      - name: OrderTrackingPage
+        display_mappings: [状态时间线：已支付 / 已接单 / 已出餐 / 配送中 / 已送达, 配送中显示地图与骑手位置, 取消与退款入口按状态显隐]
+        related_use_cases: [TrackMyOrder, CancelMyOrder, RequestRefund]
+  - name: merchant-console
+    type: frontend
+    summary: 商家后台（Web）
+    tech_stack:
+      language: TypeScript
+      frameworks: [React]
+    app-use-case:
+      - name: AcceptIncomingOrder
+        package: Orders
+        actor: Merchant
+        includes: [AcceptOrder]
+        rule:
+          - { content: 新订单声音提醒；显示接单倒计时（5 分钟） }
+      - name: MarkReadyForPickup
+        package: Orders
+        actor: Merchant
+        includes: [MarkOrderReady]
+      - name: EditMenu
+        package: Menu
+        actor: Merchant
+        includes: [UpdateMenu]
+        rule:
+          - { content: 支持单道菜快速售罄 / 恢复，整体保存时调用 UpdateMenu }
+    page:
+      - name: OrderBoardPage
+        display_mappings: [三栏看板：待接单 / 备餐中 / 待取餐, 每张卡片显示倒计时与订单行]
+        related_use_cases: [AcceptIncomingOrder, MarkReadyForPickup]
+      - name: MenuEditorPage
+        display_mappings: [菜品表格：名称、价格、在售开关]
+        related_use_cases: [EditMenu]
+  - name: rider-app
+    type: frontend
+    summary: 骑手端 App
+    tech_stack:
+      language: Kotlin
+      frameworks: [Android]
+    app-use-case:
+      - name: ReceiveTaskOffer
+        package: Tasks
+        actor: Rider
+        includes: [AcceptDeliveryTask]
+        rule:
+          - { content: 推送弹窗显示餐厅、送达地址、预计收入，30 秒倒计时 }
+      - name: ReportLocation
+        package: Tracking
+        actor: Rider
+        includes: [TrackRiderLocation]
+        rule:
+          - { content: 上线期间后台每 5 秒上报一次位置 }
+      - name: FinishDelivery
+        package: Tasks
+        actor: Rider
+        includes: [CompleteDelivery]
+        rule:
+          - { content: 到店点击"已取餐"，送达点击"已送达"；两步都走 CompleteDelivery }
+    page:
+      - name: TaskListPage
+        display_mappings: [当前任务卡片与历史任务列表, 上线 / 下线开关]
+        related_use_cases: [ReceiveTaskOffer, FinishDelivery]
+      - name: NavigationPage
+        display_mappings: [地图导航：到店与送达两段路线, 底部操作按钮随任务阶段切换]
+        related_use_cases: [FinishDelivery, ReportLocation]
+  - name: ops-console
+    type: frontend
+    summary: 运营与客服后台（Web）
+    tech_stack:
+      language: TypeScript
+      frameworks: [React]
+    app-use-case:
+      - name: ReviewRefundRequest
+        package: AfterSale
+        actor: CustomerService
+        includes: [ReviewRefundRequest]
+        rule:
+          - { content: 列表只显示 Submitted 的申请；审核时展示订单、支付与配送详情 }
+      - name: ViewOrderBoard
+        package: Monitoring
+        actor: OpsManager
+        includes: [GetOrderStatus]
+        rule:
+          - { content: 按状态统计订单数；高亮支付后 5 分钟未接单与出餐后 10 分钟未派出的订单 }
+    page:
+      - name: RefundReviewPage
+        display_mappings: [待审核申请列表, 通过 / 拒绝按钮，拒绝需填理由]
+        related_use_cases: [ReviewRefundRequest]
+      - name: OrderMonitorPage
+        display_mappings: [各状态订单数量, 超时订单列表]
+        related_use_cases: [ViewOrderBoard]
+  - name: payment-gateway
+    type: external
+    summary: 第三方支付机构的收银台与回调，不是我们的代码
+    tech_stack:
+      implementation: 微信支付 / 支付宝开放平台
+    app-use-case:
+      - name: ProcessPayment
+        actor: PaymentProvider
+        rule:
+          - { content: 顾客在收银台完成付款；结果通过回调通知 order-service }
+      - name: NotifyPaymentResult
+        actor: PaymentProvider
+        includes: [ConfirmPayment]

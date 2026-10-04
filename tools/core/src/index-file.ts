@@ -123,9 +123,11 @@ function rootMap(doc: IndexDoc): YAMLMap {
   return doc.contents as YAMLMap
 }
 
+// Container maps (sequences / business / applications / package wrappers) are always block style,
+// even when the file was scaffolded with `{}` placeholders. Entry maps stay compact flow one-liners.
 function getOrCreateMap(parent: YAMLMap, key: string): YAMLMap {
   const existing = parent.get(key, true)
-  if (isMap(existing)) return existing as YAMLMap
+  if (isMap(existing)) { (existing as YAMLMap).flow = false; return existing as YAMLMap }
   const fresh = new YAMLMap()
   parent.set(key, fresh)
   return fresh

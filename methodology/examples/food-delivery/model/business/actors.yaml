@@ -1,0 +1,41 @@
+organization:
+  - id: org-001
+    name: QuickBite
+    summary: 外卖订餐平台：连接顾客、餐厅与骑手，提供点餐、支付、出餐、配送与售后的全流程服务
+    provides:
+      - buc-001
+      - buc-002
+      - buc-003
+      - buc-004
+      - buc-005
+business-worker:
+  - id: bw-001
+    name: CustomerService
+    summary: 客服：处理退款审核与投诉
+  - id: bw-002
+    name: OpsManager
+    summary: 运营：监控订单流转与平台指标
+external-party:
+  - id: ep-001
+    name: Customers
+    summary: 使用平台点餐的个人用户
+  - id: ep-002
+    name: Restaurants
+    summary: 入驻平台的餐厅商家
+  - id: ep-003
+    name: Riders
+    summary: 承接配送任务的众包骑手
+  - id: ep-004
+    name: PaymentProvider
+    type: system
+    summary: 第三方支付机构（微信支付 / 支付宝），本系统对接其支付与退款接口
+participant:
+  - id: pt-001
+    name: Customer
+    type: person
+  - id: pt-002
+    name: Merchant
+    type: person
+  - id: pt-003
+    name: Rider
+    type: person

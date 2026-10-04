@@ -59,7 +59,7 @@ export function SettingsView({ config, onChanged, onClose }: Props) {
         <section>
           <h3>Add existing directory as project</h3>
           <div className="form-row">
-            <input value={addName} placeholder="name (e.g. chargable-proxy)" onChange={e => setAddName(e.target.value)} />
+            <input value={addName} placeholder="name (e.g. food-delivery)" onChange={e => setAddName(e.target.value)} />
             <input value={addPath} placeholder="absolute path to model root (e.g. /Users/x/proj/model)" onChange={e => setAddPath(e.target.value)} />
             <button
               disabled={!addName || !addPath}

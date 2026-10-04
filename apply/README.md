@@ -11,7 +11,7 @@ DCDDP 系统建模方法论是一套描述系统结构的语言：4 视图分层
 - 建模约定：`methodology/modeling-conventions.md`
 - 元模型 schema：`methodology/meta-model.schema.yaml`
 - AI 建模 prompt：`apply/system-modeling-prompt.md`（本目录）
-- 参考样板：`methodology/examples/chargable-proxy/`
+- 参考样板：`methodology/examples/food-delivery/`（外卖平台；`draft.yaml` 是生成它的导入草稿）
 - CLI 稳定入口：`apply/bin/dcddp`（本目录）；手册：`tools/docs/CLI_MANUAL.md`
 - studio 应用：`tools/studio/`（React 模型浏览 / 编辑，`dcddp studio` 启动）
 

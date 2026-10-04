@@ -7,7 +7,7 @@ import {
   loadGraph, nodeReader, resolveRef, validateModel, scaffoldModel, parseSetKvs, type Graph,
 } from '../src/index.ts'
 
-const SRC = resolve(__dirname, '../../../methodology/examples/chargable-proxy/model')
+const SRC = resolve(__dirname, '../../../methodology/examples/food-delivery/model')
 let root: string
 const load = (): Promise<Graph> => loadGraph(root, nodeReader(root), { onWarn: () => {} })
 
@@ -27,20 +27,20 @@ describe('add-node', () => {
   })
   it('requires --parent for nested kinds and validates the parent kind', async () => {
     await expect(addNode(root, 'app-use-case', { name: 'X' })).rejects.toThrow(/parent/)
-    await expect(addNode(root, 'app-use-case', { name: 'X', parent: 'business-worker:Admin' })).rejects.toThrow(/cannot be placed/)
+    await expect(addNode(root, 'app-use-case', { name: 'X', parent: 'business-worker:OpsManager' })).rejects.toThrow(/cannot be placed/)
   })
   it('creates app-scoped entries in the application directory with packages', async () => {
-    const r = await addNode(root, 'app-use-case', { name: 'Ping', parent: 'application:squid', package: 'Ops/Health', attrs: parseSetKvs(['summary=liveness', 'api=["GET /ping"]']) })
-    expect(r.file).toMatch(/applications\/app-\d+-squid\/use-cases\.yaml$/)
+    const r = await addNode(root, 'app-use-case', { name: 'Ping', parent: 'application:payment-gateway', package: 'Ops/Health', attrs: parseSetKvs(['summary=liveness', 'api=["GET /ping"]']) })
+    expect(r.file).toMatch(/applications\/app-\d+-payment-gateway\/use-cases\.yaml$/)
     const g = await load()
     const n = resolveRef(g, r.id)
     expect(n.package).toBe('Ops/Health')
     expect(g.nodesData[n.id].api).toEqual(['GET /ping'])
   })
   it('nests entities under an aggregate root and VOs under an app', async () => {
-    const s = await addNode(root, 'entity', { name: 'Session', parent: 'application:manager-server', attrs: { fields: [{ id: 'Long, pk' }] } })
+    const s = await addNode(root, 'entity', { name: 'Session', parent: 'application:order-service', attrs: { fields: [{ id: 'Long, pk' }] } })
     const m = await addNode(root, 'entity', { name: 'SessionLog', parent: s.id })
-    const vo = await addNode(root, 'value-object', { name: 'Money', parent: 'application:manager-server' })
+    const vo = await addNode(root, 'value-object', { name: 'Coupon', parent: 'application:order-service' })
     const g = await load()
     expect(resolveRef(g, m.id).parent).toBe(s.id)
     expect(g.edges.some(e => e.rel === 'aggregates' && e.from === s.id && e.to === m.id)).toBe(true)
@@ -62,11 +62,11 @@ describe('add-node', () => {
 
 describe('update-node / move', () => {
   it('renames in index + entry, and renames the application directory', async () => {
-    await updateNode(root, 'application:squid', { name: 'squid-proxy' }, [])
+    await updateNode(root, 'application:payment-gateway', { name: 'pay-gateway' }, [])
     const g = await load()
-    const app = resolveRef(g, 'application:squid-proxy')
-    expect((await readdir(join(root, 'applications'))).some(d => d.startsWith(`${app.id}-squid-proxy`))).toBe(true)
-    expect(g.nodesData[app.id].name).toBe('squid-proxy')
+    const app = resolveRef(g, 'application:pay-gateway')
+    expect((await readdir(join(root, 'applications'))).some(d => d.startsWith(`${app.id}-pay-gateway`))).toBe(true)
+    expect(g.nodesData[app.id].name).toBe('pay-gateway')
   })
   it('moves between packages and prunes empty wrappers', async () => {
     await updateNode(root, 'app-use-case:Ping', { package: 'Ops' }, [])
@@ -78,9 +78,9 @@ describe('update-node / move', () => {
   it('re-parents via moveNode', async () => {
     const g0 = await load()
     const log = resolveRef(g0, 'entity:SessionLog')
-    await moveNode(root, log.id, { parent: 'application:manager-server' })
+    await moveNode(root, log.id, { parent: 'application:order-service' })
     const g = await load()
-    expect(resolveRef(g, log.id).parent).toBe(resolveRef(g, 'application:manager-server').id)
+    expect(resolveRef(g, log.id).parent).toBe(resolveRef(g, 'application:order-service').id)
   })
   it('sets and unsets plain attrs', async () => {
     const r = await updateNode(root, 'app-use-case:Ping', { summary: 'x' }, ['api'])
@@ -94,26 +94,26 @@ describe('edges', () => {
   it('connect / update-edge / disconnect through storage shapes', async () => {
     const g0 = await load()
     const session = resolveRef(g0, 'entity:Session')
-    const account = g0.nodes.find(n => n.kind === 'entity' && n.name === 'Account' && !n.parent)!
+    const account = g0.nodes.find(n => n.kind === 'entity' && n.name === 'Customer' && !n.parent)!
     await connect(root, session.id, 'realizes', account.id, { note: 'projection' })
     await expect(connect(root, session.id, 'realizes', account.id)).rejects.toThrow(/already exists/)
     await updateEdge(root, session.id, 'realizes', account.id, { note: 'app projection' }, [])
     let g = await load()
     const e = g.edges.find(x => x.rel === 'realizes' && x.from === session.id)!
     expect(e.to).toBe(account.id); expect(e.attrs?.note).toBe('app projection')
-    const act = resolveRef(g, 'business-use-case:Activate Service')
+    const act = resolveRef(g, 'business-use-case:OperateMarketplace')
     const oldActor = g.nodesData[act.id].actor as string
     await disconnect(root, act.id, 'has-actor', oldActor)
     await connect(root, act.id, 'has-actor', 'business-worker:Support')
-    await expect(connect(root, act.id, 'has-actor', 'business-worker:Admin')).rejects.toThrow(/already set/)
+    await expect(connect(root, act.id, 'has-actor', 'business-worker:OpsManager')).rejects.toThrow(/already set/)
     await disconnect(root, session.id, 'realizes', account.id)
     g = await load()
     expect(g.edges.some(x => x.rel === 'realizes' && x.from === session.id)).toBe(false)
   })
   it('refuses containment and derived rels', async () => {
-    await expect(connect(root, 'application:manager-server', 'has-uc', 'app-use-case:Ping')).rejects.toThrow(/containment/)
+    await expect(connect(root, 'application:order-service', 'has-uc', 'app-use-case:Ping')).rejects.toThrow(/containment/)
     const g = await load()
-    const vo = resolveRef(g, 'value-object:Money')
+    const vo = resolveRef(g, 'value-object:Coupon')
     await expect(connect(root, 'entity:Session', 'uses', vo.id)).rejects.toThrow(/derived/)
   })
 })
@@ -121,9 +121,9 @@ describe('edges', () => {
 describe('resources', () => {
   it('use case exposes an api; use case uses entity; entity uses topic / table with modes', async () => {
     const g0 = await load()
-    const app = resolveRef(g0, 'application:manager-server')
-    const uc = g0.nodes.find(n => n.kind === 'app-use-case' && n.name === 'CreatePackages' && n.parent === app.id)!
-    const ent = g0.nodes.find(n => n.kind === 'entity' && n.name === 'PackageTemplate' && n.parent === app.id)!
+    const app = resolveRef(g0, 'application:order-service')
+    const uc = g0.nodes.find(n => n.kind === 'app-use-case' && n.name === 'ExecuteRefund' && n.parent === app.id)!
+    const ent = g0.nodes.find(n => n.kind === 'entity' && n.name === 'RefundRequest' && n.parent === app.id)!
     const api = await addNode(root, 'resource', { name: 'POST /api/x', parent: app.id, attrs: { type: 'api' } })
     const topic = await addNode(root, 'resource', { name: 'x.events', parent: app.id, attrs: { type: 'topic' } })
     expect(api.id).toMatch(/^res-\d{3}$/)
@@ -146,7 +146,7 @@ describe('remove-node', () => {
   it('cascades through the subtree and cleans references', async () => {
     const g0 = await load()
     const ping = resolveRef(g0, 'app-use-case:Ping')
-    const bca = g0.nodes.find(n => n.kind === 'app-use-case' && n.name === 'BatchCreateAccounts')!
+    const bca = g0.nodes.find(n => n.kind === 'app-use-case' && n.name === 'UpdateMenu')!
     await connect(root, bca.id, 'includes', ping.id)
     const r = await removeNode(root, ping.id)
     expect(r.removedIds.length).toBe(2) // ping + its rule
@@ -157,7 +157,7 @@ describe('remove-node', () => {
   })
   it('removes an application with its directory', async () => {
     const g0 = await load()
-    const app = resolveRef(g0, 'application:squid-proxy')
+    const app = resolveRef(g0, 'application:pay-gateway')
     await removeNode(root, app.id)
     expect((await readdir(join(root, 'applications'))).some(d => d.startsWith(app.id))).toBe(false)
   })
@@ -170,7 +170,7 @@ describe('validate', () => {
     expect(findings.some(f => f.code === 'orphan-entry' && f.message.includes('ent-999'))).toBe(true)
     await rm(join(root, 'business', 'extra.yaml'))
     const g = await load()
-    const acc = g.nodes.find(n => n.kind === 'entity' && n.name === 'Account' && !n.parent)!
+    const acc = g.nodes.find(n => n.kind === 'entity' && n.name === 'Customer' && !n.parent)!
     await updateNode(root, acc.id, { fields: 'just text' }, [])
     const r2 = await validateModel(root)
     expect(r2.findings.some(f => f.code === 'attr-shape' && f.nodeId === acc.id)).toBe(true)

@@ -1,0 +1,217 @@
+entity:
+  - id: ent-010
+    name: Order
+    summary: 订单聚合根：订单行随之创建与删除，总额由行计算
+    fields:
+      - id: Long, 主键
+      - customerId: Long, 顾客
+      - restaurantId: Long, 餐厅
+      - lines: List<OrderLine>, 订单行
+      - deliveryAddress: DeliveryAddress, 收货地址值对象
+      - totalAmount: Money, 应付总额
+      - status: OrderStatus, 状态
+      - createdAt: LocalDateTime, 创建时间
+    invariants:
+      - 至少有一条订单行
+      - totalAmount 等于所有行小计之和加配送费，任何修改行的操作都重新计算
+    repository:
+      name: OrderRepository
+      operations:
+        - findById
+        - save
+        - findUnpaidOlderThan
+        - findPaidNotAcceptedOlderThan
+    relationships:
+      - kind: realizes
+        target: ent-005
+      - kind: implements
+        target: role-001
+    uses:
+      - target: res-012
+        mode: write
+      - target: res-014
+        mode: write
+      - target: res-011
+        mode: publish
+    emits:
+      - evt-001
+      - evt-002
+      - evt-003
+      - evt-004
+  - id: ent-011
+    name: OrderLine
+    summary: 聚合内实体：订单行
+    fields:
+      - menuItemId: Long, 菜品
+      - name: String, 菜名快照
+      - quantity: Integer, 数量
+      - unitPrice: Money, 单价快照
+    relationships:
+      - kind: realizes
+        target: ent-006
+  - id: ent-012
+    name: Payment
+    summary: 支付记录
+    fields:
+      - id: Long, 主键
+      - orderId: Long, 订单
+      - amount: Money, 金额
+      - method: PaymentMethod, 支付方式
+      - providerTxnId: String, 支付机构交易号
+      - status: PaymentStatus, 状态
+    repository:
+      name: PaymentRepository
+      operations:
+        - findByOrderId
+        - findByProviderTxnId
+        - save
+    relationships:
+      - kind: realizes
+        target: ent-007
+    uses:
+      - target: res-013
+        mode: write
+    emits:
+      - evt-005
+  - id: ent-013
+    name: RefundRequest
+    summary: 退款申请
+    fields:
+      - id: Long, 主键
+      - orderId: Long, 订单
+      - amount: Money, 金额
+      - reason: String, 原因
+      - status: RefundStatus, 状态
+    repository:
+      name: RefundRequestRepository
+      operations:
+        - findById
+        - findOpenByOrderId
+        - save
+    relationships:
+      - kind: realizes
+        target: ent-009
+  - id: ent-014
+    name: Delivery
+    summary: 配送记录（本服务只记录进度，派单在 dispatch-service）
+    fields:
+      - id: Long, 主键
+      - orderId: Long, 订单
+      - riderId: Long, 骑手
+      - status: DeliveryStatus, 状态
+    repository:
+      name: DeliveryRepository
+      operations:
+        - findByOrderId
+        - save
+    relationships:
+      - kind: realizes
+        target: ent-008
+value-object:
+  - id: vo-001
+    name: DeliveryAddress
+    fields:
+      - receiver: String, 收货人
+      - phone: String, 联系电话
+      - detail: String, 详细地址
+      - lat: Double, 纬度
+      - lng: Double, 经度
+  - id: vo-002
+    name: Money
+    fields:
+      - amount: BigDecimal, 金额
+      - currency: String, 币种，固定 CNY
+enum:
+  - id: enum-001
+    name: OrderStatus
+    values:
+      - Created
+      - Paid
+      - Accepted
+      - Ready
+      - Delivering
+      - Delivered
+      - Cancelled
+      - Refunded
+  - id: enum-002
+    name: PaymentMethod
+    values:
+      - Wechat
+      - Alipay
+  - id: enum-003
+    name: PaymentStatus
+    values:
+      - Pending
+      - Succeeded
+      - Failed
+      - Refunded
+  - id: enum-004
+    name: RefundStatus
+    values:
+      - Submitted
+      - Approved
+      - Rejected
+  - id: enum-005
+    name: DeliveryStatus
+    values:
+      - Assigned
+      - PickedUp
+      - Delivered
+role:
+  - id: role-001
+    name: Priceable
+    methods:
+      - "total(): Money, 计算应付总额"
+    summary: 可计价的东西：订单实现它，未来购物车也可以
+domain-service:
+  - id: svc-001
+    name: PricingService
+    operations:
+      - "quote(lines, deliveryDistance): Money, 行小计 + 按距离阶梯计费的配送费"
+    summary: 定价规则跨订单与餐厅配置，不属于单一聚合
+  - id: svc-002
+    name: RefundPolicy
+    operations:
+      - "decide(request, order, delivery): AutoApprove | NeedsReview, 小额且未取餐自动通过"
+    summary: 退款判定规则集中在此，便于运营调整阈值
+  - id: svc-003
+    name: OrderTimeoutScheduler
+    operations:
+      - "cancelUnpaid(): 取消超过 15 分钟未支付的订单"
+      - "cancelNotAccepted(): 取消支付后 5 分钟未接单的订单并退款"
+    handles:
+      - evt-001
+domain-event:
+  - id: evt-001
+    name: OrderPaid
+    published_when: Order 从 Created 转入 Paid
+    payload:
+      - orderId: Long
+      - restaurantId: Long
+      - amount: Money
+  - id: evt-002
+    name: OrderAccepted
+    published_when: 商家接单
+    payload:
+      - orderId: Long
+  - id: evt-003
+    name: OrderReady
+    published_when: 商家出餐完成，需要派单
+    payload:
+      - orderId: Long
+      - restaurantLat: Double
+      - restaurantLng: Double
+      - deliveryLat: Double
+      - deliveryLng: Double
+  - id: evt-004
+    name: OrderDelivered
+    published_when: 骑手确认送达
+    payload:
+      - orderId: Long
+      - deliveredAt: LocalDateTime
+  - id: evt-005
+    name: PaymentSucceeded
+    published_when: 支付机构回调成功
+    payload:
+      - orderId: Long
+      - paymentId: Long

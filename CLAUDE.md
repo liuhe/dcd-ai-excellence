@@ -18,7 +18,7 @@ dcd-ai-excellence/
 ├── methodology/                 # 块 1 方法论本体（人和 AI 读的内容，不含代码）
 │   ├── meta-model.schema.yaml   #   元模型 Schema（core vocabulary 的人读镜像）
 │   ├── modeling-conventions.md  #   建模约定
-│   └── examples/chargable-proxy/  # 样板工程（schema v6.0）
+│   └── examples/food-delivery/  # 样板工程：QuickBite 外卖平台（schema 7.0，含生成它的 draft.yaml）
 ├── tools/                       # 块 2 工具链（npm workspaces，core 是其余三个的共享依赖）
 │   ├── core/                    #   @dcddp/core — loader / graph ops / vocabulary / yaml-io / migrations / types
 │   ├── cli/                     #   @dcddp/cli — 6 图原语动词 + list/get/validate/describe/migrate
@@ -61,9 +61,9 @@ dcd-ai-excellence/
 
 ```bash
 # CLI（稳定入口，任意 cwd 可用）
-node apply/bin/dcddp list application -m methodology/examples/chargable-proxy/model
-node apply/bin/dcddp get entity ent-001 -m methodology/examples/chargable-proxy/model
-node apply/bin/dcddp validate -m methodology/examples/chargable-proxy/model
+node apply/bin/dcddp list application -m methodology/examples/food-delivery/model
+node apply/bin/dcddp get entity ent-001 -m methodology/examples/food-delivery/model
+node apply/bin/dcddp validate -m methodology/examples/food-delivery/model
 
 # kg-web（可视化编辑器，含 API server）
 cd tools/kg-web && npm run dev        # http://localhost:5173 + LAN
@@ -129,7 +129,7 @@ node apply/bin/dcddp describe --format markdown > tools/docs/vocabulary-referenc
 
 ## 参考数据
 
-- 淘宝店铺 SKU 结构详见 `methodology/examples/chargable-proxy/docs/taobao-sku-structure.md`
+- 样板需求背景见 `methodology/examples/food-delivery/docs/background.md`
 - 完整 changelog 见 `tools/docs/CHANGELOG.md`
 - 设计原则见 `tools/docs/DESIGN.md`
 - 存储映射见 `tools/docs/STORAGE.md`，节点/边清单见 `tools/docs/vocabulary-reference.md`

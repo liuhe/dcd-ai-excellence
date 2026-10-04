@@ -1,0 +1,122 @@
+application:
+  - id: app-001
+    name: order-service
+    type: backend
+    summary: 订单核心服务：订单、支付、退款、菜单的所有写操作与状态流转
+    tech_stack:
+      language: Java
+      frameworks:
+        - Spring Boot
+        - Spring Data JPA
+      storage: MySQL
+      messaging: Kafka
+      cache: Redis
+    infrastructure:
+      - name: MySQL
+        type: database
+        description: 订单、支付、退款、菜单的持久化
+      - name: Kafka
+        type: message-broker
+        description: 发布订单事件，供配送与通知消费
+      - name: Redis
+        type: cache
+        description: 订单状态快照，供高频查询
+  - id: app-002
+    name: dispatch-service
+    type: backend
+    summary: 派单服务：消费出餐事件，就近匹配骑手，跟踪骑手位置
+    tech_stack:
+      language: Go
+      storage: Redis (GEO)
+      messaging: Kafka
+    infrastructure:
+      - name: Redis
+        type: cache
+        description: 骑手实时位置（GEO）与任务状态
+      - name: Kafka
+        type: message-broker
+        description: 消费 order.events
+  - id: app-003
+    name: customer-app
+    type: frontend
+    summary: 顾客端 App（iOS / Android）
+    tech_stack:
+      language: TypeScript
+      frameworks:
+        - React Native
+  - id: app-004
+    name: merchant-console
+    type: frontend
+    summary: 商家后台（Web）
+    tech_stack:
+      language: TypeScript
+      frameworks:
+        - React
+  - id: app-005
+    name: rider-app
+    type: frontend
+    summary: 骑手端 App
+    tech_stack:
+      language: Kotlin
+      frameworks:
+        - Android
+  - id: app-006
+    name: ops-console
+    type: frontend
+    summary: 运营与客服后台（Web）
+    tech_stack:
+      language: TypeScript
+      frameworks:
+        - React
+  - id: app-007
+    name: payment-gateway
+    type: external
+    summary: 第三方支付机构的收银台与回调，不是我们的代码
+    tech_stack:
+      implementation: 微信支付 / 支付宝开放平台
+topology:
+  - from: customer-app
+    to: order-service
+    label: 下单、查询、取消、退款申请
+    type: call
+    details: [CreateOrder, GetOrderStatus, CancelOrder, SubmitRefundRequest]
+  - from: customer-app
+    to: payment-gateway
+    label: 拉起收银台付款
+    type: call
+    details: [ProcessPayment]
+  - from: payment-gateway
+    to: order-service
+    label: 支付结果回调
+    type: call
+    details: [ConfirmPayment]
+  - from: merchant-console
+    to: order-service
+    label: 接单、出餐、改菜单
+    type: call
+    details: [AcceptOrder, MarkOrderReady, UpdateMenu]
+  - from: order-service
+    to: dispatch-service
+    label: 订单事件（Kafka order.events），出餐完成触发派单
+    type: sync
+    details: [AssignRider]
+  - from: rider-app
+    to: dispatch-service
+    label: 接任务、上报位置、取餐 / 送达
+    type: call
+    details: [AcceptDeliveryTask, TrackRiderLocation, CompleteDelivery]
+  - from: dispatch-service
+    to: order-service
+    label: 回写配送进度
+    type: call
+    details: [RecordDeliveryProgress]
+  - from: ops-console
+    to: order-service
+    label: 退款审核、订单看板
+    type: call
+    details: [ReviewRefundRequest, GetOrderStatus]
+  - from: order-service
+    to: payment-gateway
+    label: 调用退款接口
+    type: call
+    details: [ExecuteRefund]

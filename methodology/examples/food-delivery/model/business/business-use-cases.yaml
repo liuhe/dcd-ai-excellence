@@ -1,0 +1,62 @@
+business-use-case:
+  - id: buc-001
+    name: OrderMeal
+    summary: 顾客浏览餐厅、下单并支付，直到拿到餐
+    stakeholder_interests:
+      - stakeholder: Customer
+        interest: 快速找到想吃的餐厅，付款后能实时看到订单进度
+      - stakeholder: Merchant
+        interest: 订单信息准确，付款后才进入出餐流程
+      - stakeholder: OpsManager
+        interest: 下单到送达的转化率与时效可度量
+    actor: pt-001
+    uses:
+      - suc-001
+      - suc-002
+      - suc-003
+  - id: buc-002
+    name: PrepareOrder
+    summary: 商家接单、备餐并标记可取餐
+    stakeholder_interests:
+      - stakeholder: Merchant
+        interest: 新订单及时提醒，菜单可随时调整
+      - stakeholder: Customer
+        interest: 商家超时未接单时自动取消并退款
+    actor: pt-002
+    uses:
+      - suc-004
+      - suc-005
+      - suc-006
+  - id: buc-003
+    name: DeliverOrder
+    summary: 骑手接到配送任务，取餐并送达顾客
+    stakeholder_interests:
+      - stakeholder: Rider
+        interest: 任务分配就近合理，路线清晰
+      - stakeholder: Customer
+        interest: 能看到骑手实时位置与预计送达时间
+    actor: pt-003
+    uses:
+      - suc-007
+      - suc-008
+  - id: buc-004
+    name: ResolveAfterSale
+    summary: 顾客对订单提出退款，小额自动通过，其余由客服审核
+    stakeholder_interests:
+      - stakeholder: Customer
+        interest: 退款流程简单，小额秒退
+      - stakeholder: CustomerService
+        interest: 只处理需要人工判断的申请
+    actor: pt-001
+    uses:
+      - suc-009
+      - suc-010
+  - id: buc-005
+    name: OperateMarketplace
+    summary: 运营监控全平台订单流转，发现异常
+    stakeholder_interests:
+      - stakeholder: OpsManager
+        interest: 实时看到各环节积压与超时订单
+    actor: bw-002
+    uses:
+      - suc-011

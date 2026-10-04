@@ -22,9 +22,9 @@ apply/           分发内容：受管工程引用的稳定入口（apply/bin/dc
 npm install
 
 # 看样板模型
-node apply/bin/dcddp list application -m methodology/examples/chargable-proxy/model
-node apply/bin/dcddp get entity ent-001 -m methodology/examples/chargable-proxy/model
-node apply/bin/dcddp validate -m methodology/examples/chargable-proxy/model
+node apply/bin/dcddp list application -m methodology/examples/food-delivery/model
+node apply/bin/dcddp get entity ent-001 -m methodology/examples/food-delivery/model
+node apply/bin/dcddp validate -m methodology/examples/food-delivery/model
 
 # 建一个新模型并批量导入草稿
 node apply/bin/dcddp init -m ./model --org "My Org"

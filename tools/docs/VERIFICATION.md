@@ -20,7 +20,7 @@ npm install
 ## 2. 样板模型
 
 ```bash
-M=methodology/examples/chargable-proxy/model
+M=methodology/examples/food-delivery/model
 node apply/bin/dcddp validate -m $M            # ✓ model ok (N nodes, M edges)
 node apply/bin/dcddp list application -m $M    # 4 个应用，id + name
 node apply/bin/dcddp get entity ent-001 -m $M  # 属性 + 出入边
@@ -37,8 +37,8 @@ $D add-node app-use-case Ping --parent app-004 --package Ops/Health --set 'api=[
 $D add-node rule --parent app-use-case:Ping --set content="fast" -m /tmp/v7
 $D connect buc-001 --rel uses --to "system-use-case:Redeem Code" -m /tmp/v7
 $D update-node app-use-case Ping --set name=HealthPing --set package=Ops -m /tmp/v7   # index 里不留空 package
-$D update-node application squid --set name=squid-proxy -m /tmp/v7                      # 目录同步改名
-$D remove-node application manager-server -m /tmp/v7                                     # 级联 + 清引用
+$D update-node application payment-gateway --set name=pay-gateway -m /tmp/v7                      # 目录同步改名
+$D remove-node application order-service -m /tmp/v7                                     # 级联 + 清引用
 $D validate -m /tmp/v7                                                                   # 0 error
 ```
 

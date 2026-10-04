@@ -1,0 +1,247 @@
+schema_version: "7.0"
+sequences:
+  org: 1
+  bw: 2
+  ep: 4
+  pt: 3
+  buc: 5
+  sys: 1
+  suc: 11
+  ent: 16
+  rule: 47
+  app: 7
+  auc: 31
+  vo: 3
+  enum: 6
+  role: 1
+  svc: 4
+  evt: 6
+  res: 19
+  pg: 10
+
+business:
+  organization:
+    - { id: org-001, name: QuickBite }
+  business-worker:
+    - { id: bw-001, name: CustomerService }
+    - { id: bw-002, name: OpsManager }
+  external-party:
+    - { id: ep-001, name: Customers, participant: [ { id: pt-001, name: Customer } ] }
+    - { id: ep-002, name: Restaurants, participant: [ { id: pt-002, name: Merchant } ] }
+    - { id: ep-003, name: Riders, participant: [ { id: pt-003, name: Rider } ] }
+    - { id: ep-004, name: PaymentProvider }
+  business-use-case:
+    - { id: buc-001, name: OrderMeal }
+    - { id: buc-002, name: PrepareOrder }
+    - { id: buc-003, name: DeliverOrder }
+    - { id: buc-004, name: ResolveAfterSale }
+    - { id: buc-005, name: OperateMarketplace }
+  system:
+    - {
+        id: sys-001,
+        name: QuickBitePlatform,
+        system-use-case:
+          [
+            { id: suc-001, name: PlaceOrder },
+            { id: suc-002, name: PayOrder },
+            { id: suc-003, name: TrackOrder },
+            { id: suc-004, name: AcceptOrder },
+            { id: suc-005, name: MarkOrderReady },
+            { id: suc-006, name: ManageMenu },
+            { id: suc-007, name: DispatchRider },
+            { id: suc-008, name: CompleteDelivery },
+            { id: suc-009, name: RequestRefund },
+            { id: suc-010, name: ReviewRefund },
+            { id: suc-011, name: MonitorOrders }
+          ]
+      }
+  entity:
+    - { id: ent-001, name: Customer }
+    - { id: ent-002, name: Restaurant }
+    - { id: ent-003, name: Rider }
+    - { id: ent-004, name: MenuItem }
+    - { id: ent-005, name: Order }
+    - { id: ent-006, name: OrderLine }
+    - { id: ent-007, name: Payment }
+    - { id: ent-008, name: Delivery }
+    - { id: ent-009, name: RefundRequest }
+
+applications:
+  application:
+    - {
+        id: app-001,
+        name: order-service,
+        app-use-case:
+          [
+            {
+                package: Ordering,
+                app-use-case:
+                  [
+                    { id: auc-001, name: CreateOrder },
+                    { id: auc-002, name: ConfirmPayment },
+                    { id: auc-003, name: CancelOrder },
+                    { id: auc-004, name: GetOrderStatus }
+                  ]
+              },
+            {
+                package: Merchant,
+                app-use-case: [ { id: auc-005, name: AcceptOrder }, { id: auc-006, name: MarkOrderReady }, { id: auc-007, name: UpdateMenu } ]
+              },
+            { package: Delivery, app-use-case: [ { id: auc-008, name: RecordDeliveryProgress } ] },
+            {
+                package: AfterSale,
+                app-use-case:
+                  [
+                    { id: auc-009, name: SubmitRefundRequest },
+                    { id: auc-010, name: ReviewRefundRequest },
+                    { id: auc-011, name: ExecuteRefund }
+                  ]
+              }
+          ],
+        entity:
+          [
+            {
+                id: ent-010,
+                name: Order,
+                entity: [ { id: ent-011, name: OrderLine } ],
+                value-object: [ { id: vo-001, name: DeliveryAddress } ]
+              },
+            { id: ent-012, name: Payment },
+            { id: ent-013, name: RefundRequest },
+            { id: ent-014, name: Delivery }
+          ],
+        value-object: [ { id: vo-002, name: Money } ],
+        enum:
+          [
+            { id: enum-001, name: OrderStatus },
+            { id: enum-002, name: PaymentMethod },
+            { id: enum-003, name: PaymentStatus },
+            { id: enum-004, name: RefundStatus },
+            { id: enum-005, name: DeliveryStatus }
+          ],
+        role: [ { id: role-001, name: Priceable } ],
+        domain-service:
+          [
+            { id: svc-001, name: PricingService },
+            { id: svc-002, name: RefundPolicy },
+            { id: svc-003, name: OrderTimeoutScheduler }
+          ],
+        domain-event:
+          [
+            { id: evt-001, name: OrderPaid },
+            { id: evt-002, name: OrderAccepted },
+            { id: evt-003, name: OrderReady },
+            { id: evt-004, name: OrderDelivered },
+            { id: evt-005, name: PaymentSucceeded }
+          ],
+        resource:
+          [
+            { id: res-001, name: POST /api/orders },
+            { id: res-002, name: POST /api/payments/callback },
+            { id: res-003, name: "POST /api/orders/{id}/cancel" },
+            { id: res-004, name: "GET /api/orders/{id}" },
+            { id: res-005, name: "POST /api/orders/{id}/accept" },
+            { id: res-006, name: "POST /api/orders/{id}/ready" },
+            { id: res-007, name: "PUT /api/restaurants/{id}/menu" },
+            { id: res-008, name: "POST /api/deliveries/{id}/progress" },
+            { id: res-009, name: POST /api/refunds },
+            { id: res-010, name: "POST /api/refunds/{id}/review" },
+            { id: res-011, name: order.events },
+            { id: res-012, name: t_order },
+            { id: res-013, name: t_payment },
+            { id: res-014, name: "order:{id}:status" }
+          ]
+      }
+    - {
+        id: app-002,
+        name: dispatch-service,
+        app-use-case:
+          [
+            {
+                package: Dispatch,
+                app-use-case:
+                  [
+                    { id: auc-012, name: AssignRider },
+                    { id: auc-013, name: AcceptDeliveryTask },
+                    { id: auc-015, name: CompleteDelivery }
+                  ]
+              },
+            { package: Tracking, app-use-case: [ { id: auc-014, name: TrackRiderLocation } ] }
+          ],
+        entity: [ { id: ent-015, name: DeliveryTask }, { id: ent-016, name: RiderPosition } ],
+        value-object: [ { id: vo-003, name: GeoPoint } ],
+        enum: [ { id: enum-006, name: TaskStatus } ],
+        domain-service: [ { id: svc-004, name: RiderMatcher } ],
+        domain-event: [ { id: evt-006, name: TaskAccepted } ],
+        resource:
+          [
+            { id: res-015, name: "POST /api/tasks/{id}/accept" },
+            { id: res-016, name: "POST /api/riders/{id}/location" },
+            { id: res-017, name: "POST /api/tasks/{id}/complete" },
+            { id: res-018, name: rider:geo },
+            { id: res-019, name: "task:{id}" }
+          ]
+      }
+    - {
+        id: app-003,
+        name: customer-app,
+        app-use-case:
+          [
+            {
+                package: Ordering,
+                app-use-case:
+                  [
+                    { id: auc-016, name: BrowseRestaurants },
+                    { id: auc-017, name: PlaceOrder },
+                    { id: auc-018, name: PayForOrder },
+                    { id: auc-019, name: TrackMyOrder }
+                  ]
+              },
+            { package: AfterSale, app-use-case: [ { id: auc-020, name: CancelMyOrder }, { id: auc-021, name: RequestRefund } ] }
+          ],
+        page:
+          [
+            { id: pg-001, name: RestaurantListPage },
+            { id: pg-002, name: MenuPage },
+            { id: pg-003, name: CheckoutPage },
+            { id: pg-004, name: OrderTrackingPage }
+          ]
+      }
+    - {
+        id: app-004,
+        name: merchant-console,
+        app-use-case:
+          [
+            {
+                package: Orders,
+                app-use-case: [ { id: auc-022, name: AcceptIncomingOrder }, { id: auc-023, name: MarkReadyForPickup } ]
+              },
+            { package: Menu, app-use-case: [ { id: auc-024, name: EditMenu } ] }
+          ],
+        page: [ { id: pg-005, name: OrderBoardPage }, { id: pg-006, name: MenuEditorPage } ]
+      }
+    - {
+        id: app-005,
+        name: rider-app,
+        app-use-case:
+          [
+            { package: Tasks, app-use-case: [ { id: auc-025, name: ReceiveTaskOffer }, { id: auc-027, name: FinishDelivery } ] },
+            { package: Tracking, app-use-case: [ { id: auc-026, name: ReportLocation } ] }
+          ],
+        page: [ { id: pg-007, name: TaskListPage }, { id: pg-008, name: NavigationPage } ]
+      }
+    - {
+        id: app-006,
+        name: ops-console,
+        app-use-case:
+          [
+            { package: AfterSale, app-use-case: [ { id: auc-028, name: ReviewRefundRequest } ] },
+            { package: Monitoring, app-use-case: [ { id: auc-029, name: ViewOrderBoard } ] }
+          ],
+        page: [ { id: pg-009, name: RefundReviewPage }, { id: pg-010, name: OrderMonitorPage } ]
+      }
+    - {
+        id: app-007,
+        name: payment-gateway,
+        app-use-case: [ { id: auc-030, name: ProcessPayment }, { id: auc-031, name: NotifyPaymentResult } ]
+      }

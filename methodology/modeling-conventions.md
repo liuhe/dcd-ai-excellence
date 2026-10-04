@@ -187,19 +187,19 @@ Viewer 在该字段所在位置渲染 SVG。
 
 ```yaml
 business:
-  business_workers: [Admin]
+  business_workers: [CustomerService]
   external_parties:
-    - name: Switch Game Players
+    - name: Customers
       participants:
-        - name: Player
+        - name: Customer
           type: person
-        - name: Switch Console
+        - name: CustomerPhone
           type: device
-    - name: Taobao E-Commerce Platform
+    - name: PaymentProvider
       type: system
 ```
 
-**设计理由**：Player 和 Console 天然属于同一个"方"，按组织分组比按类型分组（人/设备/系统）更符合现实。
+**设计理由**：顾客和顾客的手机天然属于同一个"方"，按组织分组比按类型分组（人/设备/系统）更符合现实。
 
 ### 判别：外部系统是 external_party 还是技术依赖？
 
@@ -216,7 +216,7 @@ business:
 
 | 外部系统 | 用户感知 | 判别 |
 |---|---|---|
-| Taobao（用户在 Taobao 下单，本系统对接） | 用户主动跟 Taobao 打交道 | external_party |
+| 微信支付（用户在收银台付款，本系统对接回调） | 用户主动跟支付机构打交道 | external_party |
 | Stripe（用户结账时填卡，本系统转给 Stripe） | 用户跟 Stripe 直接交付支付信息 | external_party |
 | Claude API / 第三方 LLM 服务（用户跟本系统聊天，系统转发给 LLM） | 用户对接的是本系统的 chat 界面，不直接对 LLM | **工具，不入 external_parties** |
 | Headless Chrome（用于导出 PDF） | 用户完全无感知 | 工具，不入 |
@@ -237,7 +237,7 @@ business:
 | `moment-interval` | 粉 | 时刻 / 时段类，"什么发生了"。事件、过程、交易 | `Order`, `Payment`, `MediaFrame`, `ConnectionSession` |
 | `role` | 黄 | 角色，"在某情境下扮演什么"。把 PPT 接入 MI | `Customer`, `Teacher`, `ConferenceHost` |
 | `party-place-thing` | 绿 | 持续存在的人物地物（PPT），身份独立 | `Person`, `Node`, `Vehicle`, `Building` |
-| `description` | 蓝 | 描述 / 规范 / 分类，可复用属性集 | `ProductType`, `ProxyConfig`, `PackageTemplate` |
+| `description` | 蓝 | 描述 / 规范 / 分类，可复用属性集 | `ProductType`, `MenuItem`, `PricingPlan` |
 
 **判断顺口溜（按优先级）**：
 
@@ -320,7 +320,7 @@ entity:
 applications:
   application:
     - id: app-001
-      name: manager-server
+      name: order-service
       role:
         - { id: role-001, name: PriceQuoter }
       entity:
@@ -331,7 +331,7 @@ applications:
           value-object:
             - { id: vo-003, name: ShippingAddress }
 
-# applications/app-001-manager-server/domain.yaml（节选）
+# applications/app-001-order-service/domain.yaml（节选）
 role:
   - id: role-001
     name: PriceQuoter
@@ -369,15 +369,15 @@ entity:
 applications:
   application:
     - id: app-001
-      name: manager-server
+      name: order-service
       entity:
         - id: ent-020
-          name: Account                      # 聚合根
+          name: Order                        # 聚合根
           entity:
-            - { id: ent-021, name: Package } # 成员：Account aggregates Package
+            - { id: ent-021, name: OrderLine } # 成员：Order aggregates OrderLine
           value-object:
-            - { id: vo-003, name: Money }    # 聚合内 VO
-        - { id: ent-022, name: AuditLog }    # 普通实体
+            - { id: vo-003, name: DeliveryAddress }  # 聚合内 VO
+        - { id: ent-022, name: Payment }     # 普通实体
 ```
 
 - 聚合级不变量写在根实体条目的 `invariants`；仓储写在根实体条目的 `repository`

@@ -65,51 +65,57 @@ docs/dcddp-modeling/
 
 ```yaml
 schema_version: "7.0"
-sequences: { org: 1, ep: 1, pt: 1, buc: 2, sys: 1, suc: 2, ent: 3, app: 2, auc: 3, pg: 1, rule: 2 }
+sequences: { org: 1, bw: 1, ep: 2, pt: 2, buc: 2, sys: 1, suc: 2, ent: 4, app: 2, auc: 3, pg: 1, res: 1, rule: 3 }
 
 business:
   organization:
-    - { id: org-001, name: Chargable Proxy Service }
+    - { id: org-001, name: QuickBite }
+  business-worker:
+    - { id: bw-001, name: CustomerService }
   external-party:
     - id: ep-001
-      name: Switch Game Players
+      name: Customers
       participant:
-        - { id: pt-001, name: Player }
+        - { id: pt-001, name: Customer }
+    - { id: ep-002, name: PaymentProvider }
   business-use-case:
-    - { id: buc-001, name: Accelerate Game Downloads }
-    - package: Commerce
+    - { id: buc-001, name: OrderMeal }
+    - package: AfterSale
       business-use-case:
-        - { id: buc-002, name: Sell via Taobao }
+        - { id: buc-002, name: ResolveAfterSale }
   system:
     - id: sys-001
-      name: Proxy Platform
+      name: QuickBitePlatform
       system-use-case:
-        - { id: suc-001, name: Proxy HTTP Request }
-        - { id: suc-002, name: Redeem Code }
+        - { id: suc-001, name: PlaceOrder }
+        - { id: suc-002, name: RequestRefund }
   entity:
-    - { id: ent-001, name: Account }
-    - { id: ent-002, name: Package }
+    - { id: ent-001, name: Customer }
+    - { id: ent-002, name: Order }
 
 applications:
   application:
     - id: app-001
-      name: manager-server
+      name: order-service
       app-use-case:
-        - package: Account & Package Management
+        - package: Ordering
           app-use-case:
-            - { id: auc-001, name: BatchCreateAccounts }
-            - { id: auc-002, name: RedeemCode }
+            - { id: auc-001, name: CreateOrder }
+            - { id: auc-002, name: GetOrderStatus }
       entity:
         - id: ent-003
-          name: Account                   # 聚合根：成员 / VO 嵌在下面
-          entity: []
+          name: Order                     # 聚合根：成员 / VO 嵌在下面
+          entity:
+            - { id: ent-004, name: OrderLine }
           value-object: []
+      resource:
+        - { id: res-001, name: POST /api/orders }
     - id: app-002
-      name: manager-ui
+      name: customer-app
       app-use-case:
-        - { id: auc-003, name: RedeemCodePage }
+        - { id: auc-003, name: PlaceOrder }
       page:
-        - { id: pg-001, name: Redeem }
+        - { id: pg-001, name: CheckoutPage }
 ```
 
 #### 细节条目（每个视图各一例）
@@ -118,67 +124,71 @@ applications:
 # business/business-use-cases.yaml
 business-use-case:
   - id: buc-001
-    name: Accelerate Game Downloads
+    name: OrderMeal
     actor: pt-001                          # has-actor（必填）
     uses: [suc-001]                        # uses → system-use-case
-    summary: 玩家通过代理加速下载
+    summary: 顾客浏览餐厅、下单并支付，直到拿到餐
 
 # business/systems.yaml
 system-use-case:
-  - id: suc-002
-    name: Redeem Code
+  - id: suc-001
+    name: PlaceOrder
     actor: pt-001
-    entry: auc-003                         # has-entry → 前门应用用例
+    entry: auc-003                         # has-entry → 前门应用用例（customer-app.PlaceOrder）
 
 # business/entities.yaml
 entity:
-  - id: ent-001
-    name: Account
-    archetype: party-place-thing
+  - id: ent-002
+    name: Order
+    archetype: moment-interval
     fields:
-      - id: "Long, auto-increment primary key"
-      - username: "String, unique, used as HTTP proxy username"
+      - id: "Long, 主键"
+      - status: "OrderStatus(Created/Paid/Accepted/Delivered/Cancelled), 订单状态"
     state_machine:
       field: status
-      states: [Active, Disabled]
+      states: [Created, Paid, Accepted, Delivered, Cancelled]
       transitions:
-        - { from: Active, to: Disabled, trigger: admin disables }
+        - { from: Created, to: Paid, trigger: 支付成功回调 }
     rules:
       - id: rule-001
-        content: username 全局唯一
+        content: Accepted 之后顾客不能直接取消，只能走退款申请
         related_use_cases: [auc-001]
 
-# applications/app-001-manager-server/use-cases.yaml
+# applications/app-001-order-service/use-cases.yaml
 app-use-case:
   - id: auc-001
-    name: BatchCreateAccounts
+    name: CreateOrder
     actor: app-002                         # 另一个应用也可以是执行者
-    api: ["POST /api/accounts/batch"]
-    includes: [auc-002]
+    api: ["POST /api/orders"]
+    exposes: [res-001]                     # 实现这个 API 资源
+    uses:
+      - { target: ent-003, mode: write }   # 使用本应用的实体
     rules:
       - id: rule-002
-        content: 单次最多创建 100 个账号
-        related_entities: [ent-001]
+        content: 服务端按当前菜单价计算总额，不接受客户端传入
+        related_entities: [ent-002]
 
-# applications/app-001-manager-server/domain.yaml
+# applications/app-001-order-service/domain.yaml
 entity:
   - id: ent-003
-    name: Account
-    table_name: account
+    name: Order
+    table_name: t_order
     fields:
-      - id: "Long, primary key"
-    invariants: ["同一用户名只能有一个 Active 账号"]
-    repository: { name: AccountRepository, operations: ["findById(id)", "save(account)"] }
+      - id: "Long, 主键"
+    invariants: ["totalAmount 等于所有行小计之和加配送费"]
+    repository: { name: OrderRepository, operations: ["findById(id)", "save(order)"] }
     relationships:
       - kind: realizes
-        target: ent-001                    # 实现业务实体 Account
+        target: ent-002                    # 实现业务实体 Order
 
-# applications/app-002-manager-ui/pages.yaml
+# applications/app-002-customer-app/pages.yaml
 page:
   - id: pg-001
-    name: Redeem
+    name: CheckoutPage
     related_use_cases: [auc-003]
 ```
+
+完整样板：`methodology/examples/food-delivery/`，其中 `draft.yaml` 是生成整个模型的导入草稿，照它的样子写草稿即可。
 
 ### 建模规则
 
@@ -258,7 +268,7 @@ page:
 - 每个可独立部署的单元是一个 application；`applications/` 下一个 app 一个目录
 - `topology`（在 `applications/applications.yaml`）描绘应用间交互
   - 箭头方向 = **语义流**（数据/价值方向），**不是**技术调用方向
-    例：proxy 从 manager-server 拉用户数据，箭头是 `manager-server → proxy: Provide User Data`
+    例：dispatch-service 消费 order-service 的订单事件，箭头是 `order-service → dispatch-service: 订单事件`
   - `type`：`sync`（异步同步、轮询、推送、MQ、ETL）或 `call`（实时 RPC/REST）
   - 一对 app 之间可以有多条不同方向 / 不同 type 的边
   - 外部执行者和设备可以跟 application 一起作为端点
@@ -272,7 +282,7 @@ page:
   - 数据转换、计算
   - 时序、批处理、性能约束
   - 错误处理期望
-- `associations` 表达跨应用依赖。目标用例在别的 app 时用 `application` 字段；同 app 时省略
+- `includes` / `extends` 表达用例间依赖，目标写 id，可以跨应用（前端用例 include 后端用例是最常见的形态）
 
 **7. 前端页面**
 
@@ -283,15 +293,9 @@ page:
 
 **8. 命名与跨文件引用**
 
-- `name` 在**其语义命名空间内**唯一，非全局唯一：
-  - 业务用例：`business_use_cases` 内唯一
-  - 系统用例：其所在系统内唯一
-  - 应用用例：其所在应用内唯一（跨 app 同名允许且常见——比如一个 UI 用例包一个 backend 用例）
-  - 实体 / 应用 / 系统：全局唯一
-- 跨命名空间引用用 `<namespace>.<name>` 格式：
-  - `entry: manager-ui.BatchCreateAccounts`
-  - `related_use_cases: [auth-proxy.AuthenticateAndForward]`
-  - App 层 associations 用 `application` + `name` 分开
+- 模型文件里所有引用一律写 **id**（`entry: auc-003`、`uses: [suc-001]`），name 只是展示名
+- `name` 在**其归属范围内**唯一即可，跨范围同名允许且常见：业务实体 Order 与 order-service 的实体 Order、customer-app 与 order-service 各有一个同名用例
+- 草稿（`dcddp import`）和 CLI 参数里可以用名字：`<kind>:<name>`；同名时优先取与源节点同一应用 / 同一视图里的那个，仍然歧义就写 `<kind>:<祖先名>/<name>`（`entity:order-service/Order`、`entity:business/Order`）
 
 **9. 图（SVG）**
 
@@ -302,7 +306,7 @@ page:
 
 **10. 用例 Package 分组**
 
-- 用例可选通过 `package` 字段分组（如 "Admin Operations"、"Taobao Integration"）
+- 用例可选通过 `package` 字段分组（如 "Ordering"、"AfterSale"）
 - 系统用例和应用用例两层都支持
 - Viewer 会把 package 渲染成独立卡片（列表视图）或复合边界（用例图）
 

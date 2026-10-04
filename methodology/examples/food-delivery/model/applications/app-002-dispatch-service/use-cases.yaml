@@ -1,0 +1,52 @@
+app-use-case:
+  - id: auc-012
+    name: AssignRider
+    rules:
+      - id: rule-030
+        content: 订阅 order.events 的 OrderReady；按餐厅坐标 3 公里内找 Available 骑手，按距离与当前任务数排序
+      - id: rule-031
+        content: 向排名第一的骑手推送任务，30 秒未接受则推给下一位；连续 3 轮无人接受告警并扩大半径
+    uses:
+      - target: ent-015
+        mode: write
+  - id: auc-013
+    name: AcceptDeliveryTask
+    api:
+      - POST /api/tasks/{id}/accept
+    rules:
+      - id: rule-032
+        content: 任务仍为 Offered 且推送对象是本骑手时才能接受；接受后 Rider → Busy
+    actor: app-005
+    exposes:
+      - res-015
+    uses:
+      - target: ent-015
+        mode: write
+  - id: auc-014
+    name: TrackRiderLocation
+    api:
+      - POST /api/riders/{id}/location
+    rules:
+      - id: rule-033
+        content: 每 5 秒上报一次，写入 Redis GEO；超过 60 秒未上报视为离线
+    actor: app-005
+    exposes:
+      - res-016
+    uses:
+      - target: ent-016
+        mode: write
+  - id: auc-015
+    name: CompleteDelivery
+    api:
+      - POST /api/tasks/{id}/complete
+    rules:
+      - id: rule-034
+        content: 取餐与送达两个阶段都通过本接口上报；每次都 include RecordDeliveryProgress 同步给 order-service
+    actor: app-005
+    exposes:
+      - res-017
+    uses:
+      - target: ent-015
+        mode: write
+    includes:
+      - auc-008

@@ -1,0 +1,20 @@
+resource:
+  - id: res-015
+    name: POST /api/tasks/{id}/accept
+    type: api
+  - id: res-016
+    name: POST /api/riders/{id}/location
+    type: api
+    spec: "body: { lat, lng }"
+  - id: res-017
+    name: POST /api/tasks/{id}/complete
+    type: api
+    spec: "body: { stage: PickedUp | Delivered }"
+  - id: res-018
+    name: rider:geo
+    type: cache-key
+    spec: Redis GEO 集合，member = riderId
+  - id: res-019
+    name: task:{id}
+    type: cache-key
+    spec: 任务状态与当前推送骑手

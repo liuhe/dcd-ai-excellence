@@ -1,0 +1,15 @@
+page:
+  - id: pg-009
+    name: RefundReviewPage
+    display_mappings:
+      - 待审核申请列表
+      - 通过 / 拒绝按钮，拒绝需填理由
+    related_use_cases:
+      - auc-028
+  - id: pg-010
+    name: OrderMonitorPage
+    display_mappings:
+      - 各状态订单数量
+      - 超时订单列表
+    related_use_cases:
+      - auc-029

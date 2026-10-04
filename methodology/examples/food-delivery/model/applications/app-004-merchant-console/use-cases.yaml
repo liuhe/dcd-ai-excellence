@@ -1,0 +1,22 @@
+app-use-case:
+  - id: auc-022
+    name: AcceptIncomingOrder
+    rules:
+      - id: rule-040
+        content: 新订单声音提醒；显示接单倒计时（5 分钟）
+    actor: pt-002
+    includes:
+      - auc-005
+  - id: auc-023
+    name: MarkReadyForPickup
+    actor: pt-002
+    includes:
+      - auc-006
+  - id: auc-024
+    name: EditMenu
+    rules:
+      - id: rule-041
+        content: 支持单道菜快速售罄 / 恢复，整体保存时调用 UpdateMenu
+    actor: pt-002
+    includes:
+      - auc-007

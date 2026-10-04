@@ -1,7 +1,0 @@
-app-use-case:
-  - id: auc-020
-    name: ForwardRequest
-    actor: app-003
-    rules:
-      - id: rule-059
-        content: Receive forwarded request from auth-proxy and proxy it to the target server via the overseas network link

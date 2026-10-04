@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { importDraft, loadGraph, nodeReader, resolveRef, type Graph } from '../src/index.ts'
 
-const SRC = resolve(__dirname, '../../../methodology/examples/chargable-proxy/model')
+const SRC = resolve(__dirname, '../../../methodology/examples/food-delivery/model')
 let root: string
 const load = (): Promise<Graph> => loadGraph(root, nodeReader(root), { onWarn: () => {} })
 
@@ -45,7 +45,7 @@ application:
         package: Audit
         actor: business-worker:Auditor
         uses: [{ target: AuditEntry, mode: write }]
-        includes: [AutoFulfillOrder]
+        includes: [UpdateMenu]
         rule:
           - content: one entry per sale
 `
@@ -61,9 +61,9 @@ describe('import-draft', () => {
   })
   it('aborts on unresolved or ambiguous refs before writing', async () => {
     const before = await readFile(join(root, 'index.yaml'), 'utf8')
-    const r = await importDraft(root, 'business-use-case:\n  - name: X\n    has-actor: Nobody\napp-use-case:\n  - name: Y\n    includes: [CreatePackages]\n')
+    const r = await importDraft(root, 'business-use-case:\n  - name: X\n    has-actor: Nobody\napp-use-case:\n  - name: Y\n    includes: [ReviewRefundRequest]\n')
     expect(r.errors.some(e => /cannot resolve "Nobody"/.test(e))).toBe(true)
-    expect(r.errors.some(e => /"CreatePackages" is ambiguous/.test(e))).toBe(true)
+    expect(r.errors.some(e => /"ReviewRefundRequest" is ambiguous/.test(e))).toBe(true)
     expect(r.errors.some(e => /app-use-case cannot be a top-level entry/.test(e))).toBe(true)
     expect(await readFile(join(root, 'index.yaml'), 'utf8')).toBe(before)
   })
@@ -80,9 +80,52 @@ describe('import-draft', () => {
     expect(g.edges.some(e => e.rel === 'has-actor' && e.from === uc.id && e.to === resolveRef(g, 'business-worker:Auditor').id)).toBe(true)
     expect(g.edges.find(e => e.rel === 'uses' && e.from === uc.id && e.to === entry.id)?.attrs?.mode).toBe('write')
     expect(g.edges.find(e => e.rel === 'uses' && e.from === entry.id && e.to === resolveRef(g, 'resource:audit_log').id)?.attrs?.mode).toBe('write')
-    expect(g.edges.some(e => e.rel === 'includes' && e.from === uc.id && e.to === resolveRef(g, 'app-use-case:AutoFulfillOrder').id)).toBe(true)
+    expect(g.edges.some(e => e.rel === 'includes' && e.from === uc.id && e.to === resolveRef(g, 'app-use-case:UpdateMenu').id)).toBe(true)
     expect(g.edges.some(e => e.rel === 'uses' && e.from === resolveRef(g, 'business-use-case:AuditSales').id && e.to === resolveRef(g, 'system-use-case:RunAudit').id)).toBe(true)
     expect(g.nodes.filter(n => n.kind === 'rule' && n.parent === uc.id).length).toBe(1)
+  })
+  it('prefers the source scope for duplicate names, never resolves to itself, and accepts <scope>/<name>', async () => {
+    const draft = `
+entity:
+  - name: Invoice
+    archetype: moment-interval
+application:
+  - name: billing
+    type: backend
+    entity:
+      - name: Invoice
+        relationships: [{ kind: realizes, target: entity:Invoice }]
+    app-use-case:
+      - name: IssueInvoice
+        uses: [{ target: Invoice, mode: write }]
+  - name: billing-ui
+    type: frontend
+    app-use-case:
+      - name: IssueInvoice
+        includes: [IssueInvoice]
+system:
+  - name: billing-system
+    system-use-case:
+      - name: Issue
+        entry: billing-ui/IssueInvoice
+      - name: IssueAmbiguous
+        entry: IssueInvoice
+`
+    const r = await importDraft(root, draft, { dryRun: true })
+    expect(r.errors.length).toBe(1)
+    expect(r.errors[0]).toMatch(/IssueAmbiguous.*"IssueInvoice" is ambiguous/)
+    const ok = await importDraft(root, draft.replace('entry: IssueInvoice\n', 'entry: billing/IssueInvoice\n'))
+    expect(ok.errors).toEqual([])
+    const g = await load()
+    const biz = g.nodes.find(n => n.kind === 'entity' && n.name === 'Invoice' && !n.parent)!
+    const app = resolveRef(g, 'application:billing'); const appInv = g.nodes.find(n => n.kind === 'entity' && n.name === 'Invoice' && n.parent === app.id)!
+    const svc = g.nodes.find(n => n.kind === 'app-use-case' && n.name === 'IssueInvoice' && n.parent === app.id)!
+    const ui = g.nodes.find(n => n.kind === 'app-use-case' && n.name === 'IssueInvoice' && n.parent !== app.id)!
+    expect(g.edges.some(e => e.rel === 'realizes' && e.from === appInv.id && e.to === biz.id)).toBe(true)
+    expect(g.edges.some(e => e.rel === 'uses' && e.from === svc.id && e.to === appInv.id)).toBe(true)
+    expect(g.edges.some(e => e.rel === 'includes' && e.from === ui.id && e.to === svc.id)).toBe(true)
+    expect(g.edges.some(e => e.rel === 'has-entry' && e.from === resolveRef(g, 'system-use-case:Issue').id && e.to === ui.id)).toBe(true)
+    expect(g.edges.some(e => e.rel === 'has-entry' && e.from === resolveRef(g, 'system-use-case:IssueAmbiguous').id && e.to === svc.id)).toBe(true)
   })
   it('rejects unknown kinds, bad nesting and relations that cannot start from the kind', async () => {
     const r = await importDraft(root, 'widget:\n  - name: A\nentity:\n  - name: B\n    app-use-case: [{ name: C }]\n    includes: [Ping]\n', { dryRun: true })

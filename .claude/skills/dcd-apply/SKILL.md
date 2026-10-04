@@ -100,7 +100,7 @@ node <dcd-root>/apply/bin/dcddp import draft.yaml -m ./docs/dcddp-modeling
 - 建模约定：`<dcd-root>/methodology/modeling-conventions.md`
 - 元模型 schema：`<dcd-root>/methodology/meta-model.schema.yaml`
 - AI 建模 prompt：`<dcd-root>/apply/system-modeling-prompt.md`
-- 参考样板：`<dcd-root>/methodology/examples/chargable-proxy/`
+- 参考样板：`<dcd-root>/methodology/examples/food-delivery/`（`draft.yaml` 展示批量草稿该怎么写）
 - CLI 手册：`<dcd-root>/tools/docs/CLI_MANUAL.md`
 
 ### 模型 / 代码一致性（硬约束）

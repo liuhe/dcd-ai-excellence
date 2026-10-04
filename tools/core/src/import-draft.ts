@@ -10,7 +10,10 @@
 //   <storage field>   accepted as alias for the rel that is stored in that field (actor → has-actor)
 //   anything else     attribute written as-is
 // A ref is "<kind>:<name>", a bare name (unique among the rel's allowed target kinds, draft + model),
-// or an existing node id. Draft nodes may reference each other regardless of order.
+// or an existing node id. When several nodes share a name, the one in the source's own scope (same
+// application / system, or the business view) wins; otherwise qualify it with an ancestor name:
+// "<kind>:<scope>/<name>" (e.g. "entity:order-service/Order", "entity:business/Order").
+// Draft nodes may reference each other regardless of order; a node never resolves to itself.
 
 import yaml from 'js-yaml'
 import { NODE_KINDS, REL_KINDS, nodeSpec, isNodeId } from './vocabulary.ts'
@@ -51,7 +54,7 @@ function relsFrom(kind: string): Map<string, string> {
     for (const ep of rel.endpoints) {
       if (ep.source !== kind || ep.storage.shape === 'derived' || ep.storage.shape === 'containment') continue
       m.set(rel.kind, rel.kind)
-      if ('field' in ep.storage) m.set(ep.storage.field, rel.kind)
+      if ('field' in ep.storage && !ep.storage.field.includes('.') && !m.has(ep.storage.field)) m.set(ep.storage.field, rel.kind)
     }
   }
   return m
@@ -88,9 +91,12 @@ export function planDraft(draft: unknown): { nodes: PlannedNode[]; edges: Planne
           const items = Array.isArray(v) ? v : [v]
           for (const it of items) {
             if (isDict(it)) {
-              const { target, ...attrs } = it
+              // storage fields shared by several rels (relationships: [{ kind, target }]) carry the rel in `kind`
+              const { target, kind: itemKind, ...attrs } = it
+              const itemRel = typeof itemKind === 'string' && REL_KINDS[itemKind] && !REL_KINDS[itemKind].implicit ? itemKind : rel
+              if (typeof itemKind === 'string' && itemRel !== itemKind) { errors.push(`${node.path}.${k}: unknown relation kind "${itemKind}"`); continue }
               if (target === undefined) { errors.push(`${node.path}.${k}: struct item needs "target"`); continue }
-              edges.push({ fromKey: node.key, rel, ref: String(target), attrs, path: node.path })
+              edges.push({ fromKey: node.key, rel: itemRel, ref: String(target), attrs, path: node.path })
             } else edges.push({ fromKey: node.key, rel, ref: String(it), attrs: {}, path: node.path })
           }
           continue
@@ -105,25 +111,49 @@ export function planDraft(draft: unknown): { nodes: PlannedNode[]; edges: Planne
 }
 
 // Resolve a draft ref to either a planned node (by key) or an existing node id.
+type Cand = { key?: number; id?: string; scope: string; path: string; names: string[] }
+
 function makeResolver(g: Graph, nodes: PlannedNode[]) {
-  return (ref: string, kinds: string[]): { key?: number; id?: string } | { error: string } => {
+  const byKey = new Map(nodes.map(n => [n.key, n]))
+  const byId = new Map(g.nodes.map(n => [n.id, n]))
+  // scope = the top-level ancestor if it is an application / system, else the business view
+  const plannedChain = (n: PlannedNode): PlannedNode[] => { const c: PlannedNode[] = []; let cur: PlannedNode | undefined = n; while (cur) { c.push(cur); cur = cur.parentKey === undefined ? undefined : byKey.get(cur.parentKey) } return c }
+  const existingChain = (id: string) => { const c: typeof g.nodes = []; let cur = byId.get(id); while (cur) { c.push(cur); cur = cur.parent ? byId.get(cur.parent) : undefined } return c }
+  const scopeOf = (chain: { kind: string; key?: number; id?: string }[]) => { const top = chain[chain.length - 1]; return top && (top.kind === 'application' || top.kind === 'system') ? (top.id ? `id:${top.id}` : `key:${top.key}`) : 'business' }
+  const plannedCand = (n: PlannedNode): Cand => { const ch = plannedChain(n); return { key: n.key, scope: scopeOf(ch), path: `draft ${n.path}`, names: ch.slice(1).map(x => x.name) } }
+  const existingCand = (id: string): Cand => { const ch = existingChain(id); return { id, scope: scopeOf(ch), path: id, names: ch.slice(1).map(x => x.name) } }
+
+  return (ref: string, kinds: string[], source: PlannedNode): { key?: number; id?: string } | { error: string } => {
     const colon = ref.indexOf(':')
     const hintedKind = colon > 0 && ref.slice(0, colon) in NODE_KINDS ? ref.slice(0, colon) : undefined
-    const name = hintedKind ? ref.slice(colon + 1) : ref
+    const full = hintedKind ? ref.slice(colon + 1) : ref
     const wanted = hintedKind ? [hintedKind] : kinds
     if (!hintedKind && isNodeId(ref)) {
-      const n = g.nodes.find(x => x.id === ref)
+      const n = byId.get(ref)
       if (n) return kinds.includes(n.kind) ? { id: n.id } : { error: `${ref} is a ${n.kind}; expected ${kinds.join(' / ')}` }
     }
-    const planned = nodes.filter(n => wanted.includes(n.kind) && n.name === name)
-    const existing = g.nodes.filter(n => wanted.includes(n.kind) && n.name === name)
-    const total = planned.length + existing.length
-    if (total === 1) return planned[0] ? { key: planned[0].key } : { id: existing[0].id }
-    if (total === 0) {
-      if (hintedKind) { try { return { id: resolveRef(g, ref, hintedKind).id } } catch { /* fallthrough */ } }
-      return { error: `cannot resolve "${ref}" (looked for ${wanted.join(' / ')} named "${name}" in draft and model)` }
+    const lookup = (name: string): Cand[] => [
+      ...nodes.filter(n => n.key !== source.key && wanted.includes(n.kind) && n.name === name).map(plannedCand),
+      ...g.nodes.filter(n => wanted.includes(n.kind) && n.name === name).map(n => existingCand(n.id)),
+    ]
+    // Names may themselves contain "/" (API paths): try the whole string first, then "<scope>/<name>".
+    let name = full; let scopeName: string | undefined
+    let cands = lookup(full)
+    const slash = full.indexOf('/')
+    if (cands.length === 0 && slash > 0) {
+      scopeName = full.slice(0, slash); name = full.slice(slash + 1)
+      cands = lookup(name).filter(c => scopeName === 'business' ? c.scope === 'business' : c.names.includes(scopeName!))
     }
-    return { error: `"${ref}" is ambiguous: ${planned.map(p => `draft ${p.path}`).concat(existing.map(x => x.id)).join(', ')} — use "<kind>:<name>" or an id` }
+    if (cands.length > 1) {
+      const same = cands.filter(c => c.scope === scopeOf(plannedChain(source)))
+      if (same.length === 1) cands = same
+    }
+    if (cands.length === 1) return cands[0].key !== undefined ? { key: cands[0].key } : { id: cands[0].id }
+    if (cands.length === 0) {
+      if (hintedKind && !scopeName) { try { return { id: resolveRef(g, ref, hintedKind).id } } catch { /* fallthrough */ } }
+      return { error: `cannot resolve "${ref}" (looked for ${wanted.join(' / ')} named "${name}"${scopeName ? ` under "${scopeName}"` : ''} in draft and model)` }
+    }
+    return { error: `"${ref}" is ambiguous: ${cands.map(c => c.path).join(', ')} — qualify it as "<kind>:<scope>/<name>" (scope = an ancestor name, or "business")` }
   }
 }
 
@@ -142,7 +172,7 @@ export async function importDraft(root: string, draftText: string, opts: ImportO
   const resolved: { edge: PlannedEdge; to: { key?: number; id?: string } }[] = []
   for (const edge of plan.edges) {
     const from = plan.nodes.find(n => n.key === edge.fromKey)!
-    const r = resolve(edge.ref, targetKinds(edge.rel, from.kind))
+    const r = resolve(edge.ref, targetKinds(edge.rel, from.kind), from)
     if ('error' in r) report.errors.push(`${edge.path} --${edge.rel}--> ${r.error}`); else resolved.push({ edge, to: r })
   }
   // singleton kinds (organization) must not be duplicated

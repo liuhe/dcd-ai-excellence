@@ -433,8 +433,8 @@ deployment_yaml_schema:
 #    A high-level semantic view of inter-application interactions. Manually
 #    authored (cannot be derived from use case associations alone).
 #      - Arrow direction = SEMANTIC FLOW (data/value), not technical call direction.
-#        Example: if proxy polls manager-server for user data, arrow is
-#        "manager-server → proxy: Provide User Data".
+#        Example: dispatch-service consumes order events from order-service; the arrow is
+#        "order-service → dispatch-service: order events".
 #      - type: sync (async sync, polling, push, MQ) vs call (real-time RPC/REST).
 #      - A pair of apps can have multiple edges with different directions/types.
 #      - External actors and devices can appear as endpoints alongside applications.
@@ -502,11 +502,11 @@ deployment_yaml_schema:
 #        视觉：虚线 + 普通箭头。
 #
 #      implements（实现）：A 实现 B 的契约（接口 / Role）；A 必须满足 B 的方法签名。
-#        例：Account implements PackageActivationTarget（应用层 Role）。
+#        例：Order implements Priceable（应用层 Role）。
 #        视觉：虚线 + UML 空心三角箭头（realization）。
 #
 #      realizes（跨层实现）：应用层实体实现某个业务实体（entity → entity，跨视图）。
-#        例：manager-server 的 Account realizes 业务实体 Account。6.x 里写作
+#        例：order-service 的 Order realizes 业务实体 Order。6.x 里写作
 #        `implements` + `target_kind: business-entity`，7.0 起是独立 kind。
 #        视觉：同 implements，跨视图跳转。
 #
@@ -550,7 +550,7 @@ deployment_yaml_schema:
 #
 #      - description（蓝色）：描述 / 规范 / 分类，"可复用的属性集 / 配置 / 模板"。
 #        多个实例共享一份描述；常以"什么类型 / 什么级别 / 什么模板"出现。
-#        例：ProductType, ProxyConfig, RelayServerConfig, PackageTemplate, ChannelSpec
+#        例：ProductType, MenuItem, PricingPlan, ChannelSpec
 #
 #    判断顺口溜（按优先级）：
 #      1) 有时间发生 → MI（粉）
@@ -624,14 +624,14 @@ deployment_yaml_schema:
 #      applications:
 #        application:
 #          - id: app-001
-#            name: manager-server
+#            name: order-service
 #            entity:
 #              - id: ent-020
-#                name: Account                     # aggregate root — a normal entity
+#                name: Order                       # aggregate root — a normal entity
 #                entity:
-#                  - { id: ent-021, name: Package }   # member  (= Account aggregates Package)
+#                  - { id: ent-021, name: OrderLine } # member  (= Order aggregates OrderLine)
 #                value-object:
-#                  - { id: vo-003, name: Money }      # aggregate-local VO
+#                  - { id: vo-003, name: DeliveryAddress }  # aggregate-local VO
 #
 #    Aggregate-level invariants and the repository live on the root entity's detail entry
 #    (`invariants`, `repository`). Cross-layer mapping is `relationships: [{kind: realizes,

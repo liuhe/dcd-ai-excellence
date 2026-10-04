@@ -1,0 +1,45 @@
+app-use-case:
+  - id: auc-016
+    name: BrowseRestaurants
+    rules:
+      - id: rule-035
+        content: 按距离与评分排序展示营业中的餐厅；打烊餐厅置灰并标注
+    actor: pt-001
+  - id: auc-017
+    name: PlaceOrder
+    rules:
+      - id: rule-036
+        content: 购物车本地维护；提交时调用 CreateOrder，展示服务端返回的应付金额
+    actor: pt-001
+    includes:
+      - auc-001
+  - id: auc-018
+    name: PayForOrder
+    rules:
+      - id: rule-037
+        content: 拉起支付机构收银台；支付完成后轮询 GetOrderStatus 直到 Paid 或超时
+    actor: pt-001
+    includes:
+      - auc-030
+      - auc-004
+  - id: auc-019
+    name: TrackMyOrder
+    rules:
+      - id: rule-038
+        content: 每 10 秒刷新订单状态；Delivering 阶段在地图上显示骑手位置
+    actor: pt-001
+    includes:
+      - auc-004
+  - id: auc-020
+    name: CancelMyOrder
+    actor: pt-001
+    includes:
+      - auc-003
+  - id: auc-021
+    name: RequestRefund
+    rules:
+      - id: rule-039
+        content: 选择退款原因与金额；自动通过的申请即时提示到账时间
+    actor: pt-001
+    includes:
+      - auc-009

@@ -1,0 +1,90 @@
+entity:
+  - id: ent-015
+    name: DeliveryTask
+    summary: 派单任务：从生成到骑手完成
+    fields:
+      - id: Long, 主键
+      - orderId: Long, 订单
+      - riderId: Long, 当前推送或已接受的骑手
+      - status: TaskStatus, 状态
+      - offeredAt: LocalDateTime, 本轮推送时间
+    state_machine:
+      field: status
+      states:
+        - Pending
+        - Offered
+        - Accepted
+        - PickedUp
+        - Completed
+      transitions:
+        - from: Pending
+          to: Offered
+          trigger: 推送给某骑手
+        - from: Offered
+          to: Pending
+          trigger: 30 秒未接受，回到待派
+        - from: Offered
+          to: Accepted
+          trigger: 骑手接受
+        - from: Accepted
+          to: PickedUp
+          trigger: 骑手取餐
+        - from: PickedUp
+          to: Completed
+          trigger: 骑手送达
+    repository:
+      name: DeliveryTaskRepository
+      operations:
+        - findByOrderId
+        - findOfferedExpired
+        - save
+    relationships:
+      - kind: realizes
+        target: ent-008
+    uses:
+      - target: res-011
+        mode: subscribe
+      - target: res-019
+        mode: write
+    emits:
+      - evt-006
+  - id: ent-016
+    name: RiderPosition
+    summary: 骑手最新位置，只存 Redis
+    fields:
+      - riderId: Long, 骑手
+      - geo: GeoPoint, 坐标
+      - reportedAt: LocalDateTime, 上报时间
+    uses:
+      - target: res-018
+        mode: write
+value-object:
+  - id: vo-003
+    name: GeoPoint
+    fields:
+      - lat: Double, 纬度
+      - lng: Double, 经度
+enum:
+  - id: enum-006
+    name: TaskStatus
+    values:
+      - Pending
+      - Offered
+      - Accepted
+      - PickedUp
+      - Completed
+domain-service:
+  - id: svc-004
+    name: RiderMatcher
+    operations:
+      - "candidates(restaurantGeo, radiusKm): List<RiderId>, Redis GEO 半径查询后按任务数排序"
+    handles:
+      - evt-003
+domain-event:
+  - id: evt-006
+    name: TaskAccepted
+    published_when: 骑手接受任务
+    payload:
+      - taskId: Long
+      - riderId: Long
+      - orderId: Long

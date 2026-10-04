@@ -1,0 +1,26 @@
+# Deployment View — 部署视图（自由结构，loader 原样载入为 extras.deployment）
+nodes:
+  - name: k8s-cluster
+    type: kubernetes
+    location: cn-shanghai
+    hosts: [order-service, dispatch-service, merchant-console, ops-console]
+  - name: mysql-primary
+    type: managed-database
+    location: cn-shanghai
+    hosts: [MySQL]
+  - name: kafka
+    type: managed-messaging
+    location: cn-shanghai
+  - name: redis
+    type: managed-cache
+    location: cn-shanghai
+  - name: app-stores
+    type: client-distribution
+    hosts: [customer-app, rider-app]
+network:
+  - { from: customer-app, to: k8s-cluster, port: 443, protocol: https }
+  - { from: rider-app, to: k8s-cluster, port: 443, protocol: https }
+  - { from: k8s-cluster, to: mysql-primary, port: 3306, protocol: tcp }
+  - { from: k8s-cluster, to: kafka, port: 9092, protocol: tcp }
+  - { from: k8s-cluster, to: redis, port: 6379, protocol: tcp }
+  - { from: payment-gateway, to: k8s-cluster, port: 443, protocol: https, note: 支付回调需公网入口与签名校验 }

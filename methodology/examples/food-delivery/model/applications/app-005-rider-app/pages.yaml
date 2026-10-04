@@ -1,0 +1,17 @@
+page:
+  - id: pg-007
+    name: TaskListPage
+    display_mappings:
+      - 当前任务卡片与历史任务列表
+      - 上线 / 下线开关
+    related_use_cases:
+      - auc-025
+      - auc-027
+  - id: pg-008
+    name: NavigationPage
+    display_mappings:
+      - 地图导航：到店与送达两段路线
+      - 底部操作按钮随任务阶段切换
+    related_use_cases:
+      - auc-027
+      - auc-026

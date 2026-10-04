@@ -1,0 +1,280 @@
+entity:
+  - id: ent-001
+    name: Customer
+    archetype: role
+    summary: 在平台点餐的顾客
+    fields:
+      - id: Long, 主键
+      - name: String, 昵称
+      - phone: String, 手机号，登录凭证
+      - defaultAddress: String, 默认收货地址
+    rules:
+      - id: rule-001
+        content: 手机号在全平台唯一
+        field: phone
+  - id: ent-002
+    name: Restaurant
+    archetype: role
+    summary: 入驻商家的门店
+    fields:
+      - id: Long, 主键
+      - name: String, 门店名
+      - address: String, 门店地址
+      - status: RestaurantStatus(Open/Closed), 营业状态
+    state_machine:
+      field: status
+      states:
+        - Open
+        - Closed
+      transitions:
+        - from: Closed
+          to: Open
+          trigger: 商家开始营业
+        - from: Open
+          to: Closed
+          trigger: 商家打烊或被运营下线
+    rules:
+      - id: rule-002
+        content: Closed 状态的门店不接受新订单
+        field: status
+  - id: ent-003
+    name: Rider
+    archetype: role
+    summary: 众包骑手
+    fields:
+      - id: Long, 主键
+      - name: String, 姓名
+      - phone: String, 手机号
+      - status: RiderStatus(Offline/Available/Busy), 接单状态
+    state_machine:
+      field: status
+      states:
+        - Offline
+        - Available
+        - Busy
+      transitions:
+        - from: Offline
+          to: Available
+          trigger: 骑手上线
+        - from: Available
+          to: Busy
+          trigger: 接受配送任务
+        - from: Busy
+          to: Available
+          trigger: 完成配送
+        - from: Available
+          to: Offline
+          trigger: 骑手下线
+  - id: ent-004
+    name: MenuItem
+    archetype: description
+    summary: 餐厅菜单上的一道菜，被订单行引用
+    fields:
+      - id: Long, 主键
+      - restaurantId: Long, 引用 Restaurant
+      - name: String, 菜名
+      - price: BigDecimal, 单价（元）
+      - available: Boolean, 是否在售（售罄为 false）
+    rules:
+      - id: rule-003
+        content: 单价必须大于 0
+        field: price
+      - id: rule-004
+        content: 售罄的菜品仍显示在菜单上但不可加入订单
+        field: available
+    relationships:
+      - kind: associates
+        target: ent-002
+        cardinality: many-to-one
+        via: restaurantId
+  - id: ent-005
+    name: Order
+    archetype: moment-interval
+    summary: 一次点餐交易：从创建到送达或取消的全过程
+    fields:
+      - id: Long, 主键
+      - customerId: Long, 引用 Customer
+      - restaurantId: Long, 引用 Restaurant
+      - totalAmount: BigDecimal, 应付总额 = 各行小计 + 配送费
+      - deliveryAddress: String, 收货地址快照
+      - status: OrderStatus(Created/Paid/Accepted/Ready/Delivering/Delivered/Cancelled/Refunded), 订单状态
+      - createdAt: LocalDateTime, 创建时间
+      - paidAt: LocalDateTime, 支付时间，未支付为空
+      - deliveredAt: LocalDateTime, 送达时间，未送达为空
+    state_machine:
+      field: status
+      states:
+        - Created
+        - Paid
+        - Accepted
+        - Ready
+        - Delivering
+        - Delivered
+        - Cancelled
+        - Refunded
+      transitions:
+        - from: Created
+          to: Paid
+          trigger: 支付成功回调
+        - from: Created
+          to: Cancelled
+          trigger: 顾客取消或 15 分钟未支付
+        - from: Paid
+          to: Accepted
+          trigger: 商家接单
+        - from: Paid
+          to: Cancelled
+          trigger: 商家 5 分钟未接单，自动取消并退款
+        - from: Accepted
+          to: Ready
+          trigger: 商家标记出餐完成
+        - from: Ready
+          to: Delivering
+          trigger: 骑手取餐
+        - from: Delivering
+          to: Delivered
+          trigger: 骑手确认送达
+        - from: Delivered
+          to: Refunded
+          trigger: 退款申请通过
+      summary: Cancelled 的已支付订单自动走全额退款，不经过 Refunded 状态
+    rules:
+      - id: rule-005
+        content: 总额由订单行小计与配送费计算得出，不接受客户端传入
+        field: totalAmount
+      - id: rule-006
+        content: Accepted 之后顾客不能直接取消，只能走退款申请
+        field: status
+      - id: rule-007
+        content: 同一顾客同一餐厅 1 分钟内重复提交视为同一订单（幂等）
+    relationships:
+      - kind: associates
+        target: ent-001
+        cardinality: many-to-one
+        via: customerId
+      - kind: associates
+        target: ent-002
+        cardinality: many-to-one
+        via: restaurantId
+      - kind: composition
+        target: ent-006
+        cardinality: one-to-many
+        note: 订单行随订单创建与删除
+  - id: ent-006
+    name: OrderLine
+    archetype: mi-detail
+    summary: 订单中的一道菜及数量
+    fields:
+      - id: Long, 主键
+      - orderId: Long, 引用 Order
+      - menuItemId: Long, 引用 MenuItem
+      - quantity: Integer, 数量
+      - unitPrice: BigDecimal, 下单时的单价快照
+    rules:
+      - id: rule-008
+        content: 数量至少为 1
+        field: quantity
+      - id: rule-009
+        content: 单价取下单时刻的菜品价格，之后菜单改价不影响已有订单
+        field: unitPrice
+    relationships:
+      - kind: associates
+        target: ent-004
+        cardinality: many-to-one
+        via: menuItemId
+  - id: ent-007
+    name: Payment
+    archetype: moment-interval
+    summary: 一笔订单的支付记录，由支付机构回调确认
+    fields:
+      - id: Long, 主键
+      - orderId: Long, 引用 Order
+      - amount: BigDecimal, 支付金额
+      - method: PaymentMethod(Wechat/Alipay), 支付方式
+      - providerTxnId: String, 支付机构交易号
+      - status: PaymentStatus(Pending/Succeeded/Failed/Refunded), 支付状态
+      - createdAt: LocalDateTime, 发起时间
+    state_machine:
+      field: status
+      states:
+        - Pending
+        - Succeeded
+        - Failed
+        - Refunded
+      transitions:
+        - from: Pending
+          to: Succeeded
+          trigger: 支付机构回调成功
+        - from: Pending
+          to: Failed
+          trigger: 支付机构回调失败或超时
+        - from: Succeeded
+          to: Refunded
+          trigger: 退款执行成功
+    rules:
+      - id: rule-010
+        content: 支付金额必须等于订单总额
+        field: amount
+      - id: rule-011
+        content: 同一 providerTxnId 的回调只处理一次（幂等）
+        field: providerTxnId
+    relationships:
+      - kind: associates
+        target: ent-005
+        cardinality: one-to-one
+        via: orderId
+  - id: ent-008
+    name: Delivery
+    archetype: moment-interval
+    summary: 一次配送：骑手从取餐到送达
+    fields:
+      - id: Long, 主键
+      - orderId: Long, 引用 Order
+      - riderId: Long, 引用 Rider
+      - status: DeliveryStatus(Assigned/PickedUp/Delivered), 配送状态
+      - assignedAt: LocalDateTime, 派单时间
+      - deliveredAt: LocalDateTime, 送达时间
+    state_machine:
+      field: status
+      states:
+        - Assigned
+        - PickedUp
+        - Delivered
+      transitions:
+        - from: Assigned
+          to: PickedUp
+          trigger: 骑手到店取餐
+        - from: PickedUp
+          to: Delivered
+          trigger: 骑手确认送达
+    relationships:
+      - kind: associates
+        target: ent-005
+        cardinality: one-to-one
+        via: orderId
+      - kind: associates
+        target: ent-003
+        cardinality: many-to-one
+        via: riderId
+  - id: ent-009
+    name: RefundRequest
+    archetype: moment-interval
+    summary: 顾客对订单发起的退款申请
+    fields:
+      - id: Long, 主键
+      - orderId: Long, 引用 Order
+      - amount: BigDecimal, 申请退款金额
+      - reason: String, 退款原因
+      - status: RefundStatus(Submitted/Approved/Rejected), 审核状态
+      - createdAt: LocalDateTime, 申请时间
+    rules:
+      - id: rule-012
+        content: 金额不超过 20 元且骑手尚未取餐的申请自动通过，其余进入客服审核
+        field: amount
+      - id: rule-013
+        content: 同一订单同时只能有一个未结束的退款申请
+    relationships:
+      - kind: associates
+        target: ent-005
+        cardinality: many-to-one
+        via: orderId

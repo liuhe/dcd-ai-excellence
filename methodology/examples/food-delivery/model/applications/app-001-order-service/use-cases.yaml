@@ -1,0 +1,163 @@
+app-use-case:
+  - id: auc-001
+    name: CreateOrder
+    api:
+      - POST /api/orders
+    rules:
+      - id: rule-014
+        content: 校验餐厅 Open、每道菜 available，任一不满足返回 409
+      - id: rule-015
+        content: 以当前菜单价生成订单行快照，服务端计算总额，返回订单 id 与应付金额
+      - id: rule-016
+        content: 订单创建后 15 分钟未支付由定时任务自动取消
+    actor: app-003
+    exposes:
+      - res-001
+    uses:
+      - target: ent-010
+        mode: write
+      - target: ent-004
+        mode: read
+  - id: auc-002
+    name: ConfirmPayment
+    api:
+      - POST /api/payments/callback
+    rules:
+      - id: rule-017
+        content: 校验回调签名，校验失败返回 400 并告警
+      - id: rule-018
+        content: 按 providerTxnId 幂等；成功则 Payment → Succeeded、Order → Paid 并发布 OrderPaid
+    actor: app-007
+    exposes:
+      - res-002
+    uses:
+      - target: ent-012
+        mode: write
+      - target: ent-010
+        mode: write
+  - id: auc-003
+    name: CancelOrder
+    api:
+      - POST /api/orders/{id}/cancel
+    rules:
+      - id: rule-019
+        content: 仅 Created / Paid 状态可取消；Paid 状态取消时自动发起全额退款
+    actor: app-003
+    exposes:
+      - res-003
+    uses:
+      - target: ent-010
+        mode: write
+  - id: auc-004
+    name: GetOrderStatus
+    api:
+      - GET /api/orders/{id}
+    rules:
+      - id: rule-020
+        content: 优先读 Redis 状态快照，未命中回源 MySQL 并回填
+    actor: app-003
+    exposes:
+      - res-004
+    uses:
+      - target: ent-010
+        mode: read
+  - id: auc-005
+    name: AcceptOrder
+    api:
+      - POST /api/orders/{id}/accept
+    rules:
+      - id: rule-021
+        content: 仅 Paid 状态可接单；Paid 后 5 分钟未接单由定时任务取消并退款
+      - id: rule-022
+        content: 接单后发布 OrderAccepted
+    actor: app-004
+    exposes:
+      - res-005
+    uses:
+      - target: ent-010
+        mode: write
+  - id: auc-006
+    name: MarkOrderReady
+    api:
+      - POST /api/orders/{id}/ready
+    rules:
+      - id: rule-023
+        content: 仅 Accepted 状态可标记；标记后发布 OrderReady，触发派单
+    actor: app-004
+    exposes:
+      - res-006
+    uses:
+      - target: ent-010
+        mode: write
+  - id: auc-007
+    name: UpdateMenu
+    api:
+      - PUT /api/restaurants/{id}/menu
+    rules:
+      - id: rule-024
+        content: 整体替换菜单；已有订单行的单价快照不受影响
+    actor: app-004
+    exposes:
+      - res-007
+    uses:
+      - target: ent-004
+        mode: write
+  - id: auc-008
+    name: RecordDeliveryProgress
+    api:
+      - POST /api/deliveries/{id}/progress
+    rules:
+      - id: rule-025
+        content: 取餐 → Order Delivering；送达 → Order Delivered 并发布 OrderDelivered
+    actor: app-002
+    exposes:
+      - res-008
+    uses:
+      - target: ent-014
+        mode: write
+      - target: ent-010
+        mode: write
+  - id: auc-009
+    name: SubmitRefundRequest
+    api:
+      - POST /api/refunds
+    rules:
+      - id: rule-026
+        content: 按 RefundPolicy 判定：自动通过的直接 include ExecuteRefund，否则置为 Submitted 等待审核
+    actor: app-003
+    exposes:
+      - res-009
+    uses:
+      - target: ent-013
+        mode: write
+      - target: ent-010
+        mode: read
+    includes:
+      - auc-011
+  - id: auc-010
+    name: ReviewRefundRequest
+    api:
+      - POST /api/refunds/{id}/review
+    rules:
+      - id: rule-027
+        content: 通过则 include ExecuteRefund；拒绝需填写理由并通知顾客
+    actor: app-006
+    exposes:
+      - res-010
+    uses:
+      - target: ent-013
+        mode: write
+    includes:
+      - auc-011
+  - id: auc-011
+    name: ExecuteRefund
+    rules:
+      - id: rule-028
+        content: 调用支付机构退款接口；成功后 Payment → Refunded、Order → Refunded
+      - id: rule-029
+        content: 退款接口失败进入重试队列，最多重试 3 次后告警
+    uses:
+      - target: ent-012
+        mode: write
+      - target: ent-010
+        mode: write

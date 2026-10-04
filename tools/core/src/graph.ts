@@ -81,7 +81,11 @@ function rootMap(doc: YDoc): YAMLMap {
     doc.contents = m as unknown as typeof doc.contents
     return m
   }
-  return doc.contents as YAMLMap
+  // An empty file scaffolded as `{}` is a flow mapping; everything added under it would inherit
+  // flow (JSON-like) style. Entries are always written in block style.
+  const root = doc.contents as YAMLMap
+  root.flow = false
+  return root
 }
 
 function getOrCreateSeq(m: YAMLMap, key: string): YAMLSeq {
