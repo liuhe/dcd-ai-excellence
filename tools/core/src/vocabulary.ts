@@ -409,7 +409,7 @@ export const NODE_KINDS: Record<string, NodeKindSpec> = {
 export const EXT_ATTR = 'ext'
 
 export const OBSERVABILITY_STORE_TYPES = ['prometheus', 'loki', 'elasticsearch', 'clickhouse', 'tempo', 'mysql', 'postgres'] as const
-export const DATA_SOURCE_TYPES = ['mysql', 'postgres', 'redis', 'kafka', 'rabbitmq', 'mongodb', 'elasticsearch', 'clickhouse', 's3', 'oss'] as const
+export const DATA_SOURCE_TYPES = ['mysql', 'postgres', 'redis', 'kafka', 'rabbitmq', 'mongodb', 'elasticsearch', 'clickhouse', 'hive', 's3', 'oss'] as const
 
 // Closed value sets for String attrs that validate checks.
 export const RESOURCE_TYPES = ['api', 'topic', 'table', 'cache-key', 'queue', 'file', 'bucket'] as const

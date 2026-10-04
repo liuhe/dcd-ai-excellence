@@ -326,7 +326,7 @@ detail_entry_schemas:
   data-source:                              # store holding business data (SCHEMA NOTE 22)
     - id: ds-001
       name: string                          # e.g. "mysql-orders", "redis-prod", "kafka-prod"
-      type: mysql | postgres | redis | kafka | rabbitmq | mongodb | elasticsearch | clickhouse | s3 | oss
+      type: mysql | postgres | redis | kafka | rabbitmq | mongodb | elasticsearch | clickhouse | hive | s3 | oss
       endpoint: string                      # host / dsn / cluster name, free text
       summary: string
 
