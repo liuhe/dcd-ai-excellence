@@ -1,0 +1,21 @@
+name: ProxyTier
+fields:
+  - name: id
+    type: Long
+    desc: auto-increment primary key
+  - name: name
+    type: String
+    desc: display name (e.g., '高速版', '极速版')
+  - name: endpoint
+    type: String
+    desc: proxy address in host:port format (e.g., 'hs01.example.com:3128')
+  - name: bandwidthMbps
+    type: Integer
+    desc: theoretical bandwidth in Mbps (e.g., 30, 200)
+  - name: active
+    type: Boolean
+    desc: whether this tier is available, default true
+summary: >
+  Represents a speed tier of the proxy service, each backed by a distinct proxy node. Admin manages
+  tiers independently. Current tiers: - 高速版 (hs): ~30Mbps, endpoint hs01.example.com:3128 - 极速版
+  (xs): ~200Mbps, endpoint xs01.example.com:3129

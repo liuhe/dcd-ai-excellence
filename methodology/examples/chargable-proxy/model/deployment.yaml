@@ -1,0 +1,22 @@
+# Deployment View — Overview
+# TODO: extract from ../docs/views/deployment.md and structure here.
+# Detail: ./deployment/<topic>.yaml
+# Topology diagram: ./deployment/topology.svg (TODO)
+
+# Placeholder structure (to be filled):
+# nodes:
+#   - name: <node>
+#     type: <vm|container|service>
+#     location: <region>
+#     hosts: [<application>]
+# network:
+#   - from: <node>
+#     to: <node>
+#     port: <port>
+#     protocol: <tcp|http|https>
+# config:
+#   - application: <app>
+#     env: [...]
+#     secrets: [...]
+
+diagram: ./deployment/topology.svg

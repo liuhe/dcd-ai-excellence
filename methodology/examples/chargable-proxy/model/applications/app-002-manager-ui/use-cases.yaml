@@ -1,0 +1,57 @@
+app-use-case:
+  - id: auc-013
+    name: BatchCreateAccounts
+    actor: bw-001
+    includes:
+      - auc-001
+    rules:
+      - id: rule-047
+        content: >-
+          Provide a form with count input; on submit call manager-server API and display created credentials with CSV
+          export
+  - id: auc-014
+    name: CreatePackages
+    actor: bw-001
+    includes:
+      - auc-002
+    rules:
+      - id: rule-048
+        content: >-
+          Provide a form to select account and specify package parameters (quota, validity, name); on submit call
+          manager-server API
+  - id: auc-015
+    name: GenerateRedemptionCodes
+    actor: bw-001
+    includes:
+      - auc-003
+    rules:
+      - id: rule-049
+        content: >-
+          Provide a form with batch size, package template selection; on submit call manager-server API and display
+          codes with export option
+  - id: auc-016
+    name: ManageSkuMapping
+    actor: bw-001
+    includes:
+      - auc-004
+    rules:
+      - id: rule-050
+        content: Show editable table of TaobaoSku mappings; support inline add/edit/disable with real-time validation
+  - id: auc-017
+    name: RedeemCode
+    actor: pt-001
+    includes:
+      - auc-009
+    rules:
+      - id: rule-051
+        content: >-
+          Provide a redemption code input field on the account detail page; on submit call manager-server API and
+          refresh package list
+  - id: auc-018
+    name: QueryAccount
+    actor: pt-001
+    includes:
+      - auc-010
+    rules:
+      - id: rule-052
+        content: Display account info, package list with usage progress bars, and redemption history

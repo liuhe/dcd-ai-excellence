@@ -1,0 +1,40 @@
+name: Account
+fields:
+  - name: id
+    type: Long
+    desc: auto-increment primary key
+  - name: username
+    type: String
+    desc: unique, used as HTTP proxy username
+  - name: password
+    type: String
+    desc: used as HTTP proxy password
+  - name: status
+    type: AccountStatus(Active/Disabled)
+    desc: account state
+  - name: createdAt
+    type: LocalDateTime
+    desc: creation time
+  - name: updatedAt
+    type: LocalDateTime
+    desc: last update time
+summary: >
+  Each account represents one proxy user. Created either manually by admin or automatically when a
+  Taobao order is fulfilled.
+state_machine:
+  field: status
+  states:
+    - Active
+    - Disabled
+  transitions:
+    - from: Active
+      to: Disabled
+      trigger: Admin manually disables (e.g., abuse, refund)
+    - from: Disabled
+      to: Active
+      trigger: Admin re-enables
+rules:
+  - content: Username must be unique across all accounts
+    field: username
+  - content: Password should be generated randomly with sufficient entropy (at least 12 characters)
+    field: password

@@ -1,0 +1,12 @@
+{
+  "name": "dcddp",
+  "private": true,
+  "version": "1.0.0-alpha",
+  "description": "DCDDP methodology + tooling monorepo (methodology / tools / apply)",
+  "workspaces": [
+    "tools/core",
+    "tools/cli",
+    "tools/kg-web",
+    "tools/studio"
+  ]
+}

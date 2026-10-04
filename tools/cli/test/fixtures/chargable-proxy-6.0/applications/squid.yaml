@@ -1,0 +1,10 @@
+name: squid
+type: external
+tech_stack:
+  implementation: Squid HTTP proxy, deployed on overseas cloud servers (Tokyo/Hong Kong)
+
+use_cases:
+  - name: ForwardRequest
+    actor: auth-proxy
+    rules:
+      - content: Receive forwarded request from auth-proxy and proxy it to the target server via the overseas network link

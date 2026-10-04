@@ -1,0 +1,31 @@
+# Business Model — Overview
+# Detail per entity: ./business-model/<entity>.yaml
+# ER diagram: ./business-model/er.svg (TODO: generate)
+
+entities:
+  - name: Account
+    summary: Proxy user with credentials. Created by admin or auto-fulfillment.
+    detail: ./business-model/account.yaml
+  - name: Package
+    summary: Traffic quota grant for an account; only one Active per account at a time.
+    detail: ./business-model/package.yaml
+  - name: RedemptionCode
+    summary: One-time code that creates a Package on redemption.
+    detail: ./business-model/redemption-code.yaml
+  - name: UsageLog
+    summary: Per-request traffic record (batched from auth-proxy).
+    detail: ./business-model/usage-log.yaml
+  - name: TaobaoOrder
+    summary: Taobao trade tracking + fulfillment state machine.
+    detail: ./business-model/taobao-order.yaml
+  - name: ProxyTier
+    summary: Speed tier backed by a distinct proxy node (高速版/极速版).
+    detail: ./business-model/proxy-tier.yaml
+  - name: PackageTemplate
+    summary: Specification for a class of packages, referenced by SKU and code.
+    detail: ./business-model/package-template.yaml
+  - name: TaobaoSku
+    summary: Maps a Taobao SKU to a PackageTemplate + fulfillment behavior.
+    detail: ./business-model/taobao-sku.yaml
+
+diagram: ./business-model/er.svg

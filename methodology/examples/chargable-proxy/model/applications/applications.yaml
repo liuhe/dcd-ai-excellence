@@ -1,0 +1,83 @@
+application:
+  - id: app-001
+    name: manager-server
+    type: backend
+    tech_stack:
+      language: Java
+      frameworks:
+        - Spring Boot
+        - Spring Data JPA
+      storage: MySQL
+    summary: Backend API for all management operations.
+    infrastructure:
+      - name: MySQL
+        type: database
+        description: Primary data store for accounts, packages, redemption codes, and usage logs
+    repositories:
+      - name: AccountRepository
+        operations:
+          - findById
+          - findByUsername
+          - save
+          - findActiveAccounts
+  - id: app-002
+    name: manager-ui
+    type: frontend
+    tech_stack:
+      language: TypeScript
+      frameworks:
+        - React
+    summary: Frontend for admin and player self-service.
+  - id: app-003
+    name: auth-proxy
+    type: proxy
+    tech_stack:
+      language: Go
+      implementation: Custom HTTP proxy with Basic Auth extraction
+    summary: Authentication layer in front of Squid; validates credentials and reports usage.
+  - id: app-004
+    name: squid
+    type: external
+    tech_stack:
+      implementation: Squid HTTP proxy, deployed on overseas cloud servers (Tokyo/Hong Kong)
+    summary: Upstream HTTP proxy on overseas cloud (Tokyo/Hong Kong); not our code.
+topology:
+  - from: Switch Console
+    to: auth-proxy
+    label: HTTP proxy request (with Basic Auth)
+    type: call
+    details:
+      - AuthenticateAndForward
+  - from: auth-proxy
+    to: squid
+    label: Forward validated request
+    type: call
+  - from: manager-server
+    to: auth-proxy
+    label: Sync account & package data (auth-proxy polls on startup + periodically)
+    type: sync
+    details:
+      - SyncAccountData
+  - from: auth-proxy
+    to: manager-server
+    label: Report usage in batches
+    type: sync
+    details:
+      - ReportUsage
+  - from: manager-ui
+    to: manager-server
+    label: Admin & player self-service API
+    type: call
+  - from: Taobao E-Commerce Platform
+    to: manager-server
+    label: TMC trade notifications (payment, refund)
+    type: call
+    details:
+      - ReceiveTradeNotification
+      - HandleRefund
+  - from: manager-server
+    to: Taobao E-Commerce Platform
+    label: Query order details & confirm delivery
+    type: call
+    details:
+      - AutoFulfillOrder

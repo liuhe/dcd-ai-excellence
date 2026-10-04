@@ -1,0 +1,321 @@
+业务:
+    组织: Download Accelerator Vendor
+    业务工人: [Admin]
+    外部参与方:
+      - 名称: Switch 游戏玩家
+        参与者:
+          - 名称: Switch Game Player
+            类型: 人
+          - 名称: Switch Game Console
+            类型: 设备
+      - 名称: External E-Commerce Platform
+        类型: 系统
+        用例:
+          - 名称: 上架
+            执行者: Admin
+          - 名称: 购买
+            执行者: Switch Game Player
+    系统:
+      - 名称: Proxy System
+        用例:
+          - 名称: 创建账户
+            执行者: Admin
+            入口: manager-ui.创建账户
+          - 名称: 创建套餐
+            执行者: Admin
+            入口: manager-ui.创建套餐
+          - 名称: 查询账户详情
+            执行者: Switch Game Player
+            入口: manager-ui.查询账户详情
+          - 名称: 绑定套餐
+            执行者: Switch Game Player
+            入口: manager-ui.绑定套餐
+          - 名称: 代理HTTP请求
+            执行者: Switch Game Console
+            入口: proxy.Do Proxy
+    业务用例:
+      - 名称: 给游戏下载提速
+        执行者: Switch Game Player
+        相关方利益:
+          - 相关方: Switch Game Player
+            利益: 快速下载游戏，减少等待时间，体验流畅
+          - 相关方: Download Accelerator Vendor
+            利益: 用户持续付费使用，业务可持续
+        系统用例:
+          - 查询账户详情
+          - 绑定套餐
+          - 代理HTTP请求
+      - 名称: 运营代理服务
+        执行者: Admin
+        相关方利益:
+          - 相关方: Download Accelerator Vendor
+            利益: 通过售卖流量套餐获取收入，套餐用量可追踪可计费
+          - 相关方: Admin
+            利益: 低运营成本管理账户和套餐，批量操作高效
+        系统用例:
+          - 创建账户
+          - 创建套餐
+系统:
+    数据模型:
+      - 名称: Account
+        表名: proxy_user
+        字段:
+          - id: Long, 主键自增
+          - username: String, 唯一
+          - password: String
+        规则:
+          - 内容: username必须全局唯一
+            关联属性: username
+            关联用例: [manager-server.创建账户]
+          - 内容: 密码为8位随机数字，创建时自动生成
+            关联属性: password
+            关联用例: [manager-server.创建账户]
+      - 名称: Package
+        表名: proxy_package
+        字段:
+          - id: Long, 主键自增
+          - username: String, 关联Account
+          - domain: String, 代理域名，格式为 host:port（如 hs01.example.com:80）。同一主机可通过不同端口运行多个proxy实例，提供不同速度级别的代理服务
+          - type: String, 套餐类型(如nintendo, freedom)
+          - quota: long, 流量配额(字节)
+          - effectiveDays: int, 有效天数
+          - usedQuota: long, 已使用配额(字节)
+          - status: PackageStatus(Pending/Active/Expired/Exhausted)
+          - activateTime: long, 激活时间
+          - expireTime: long, 过期时间
+        备注: Expired状态不会真正更新到数据库，而是在查询时根据activateTime和effectiveDays以及当前时间计算出来的
+        状态机:
+          字段: status
+          状态: [Pending, Active, Expired, Exhausted]
+          转换:
+            - from: Pending
+              to: Active
+              trigger: 首次扣减流量时自动激活
+            - from: Active
+              to: Exhausted
+              trigger: usedQuota >= quota
+            - from: Active
+              to: Expired
+              trigger: 当前时间超过 activateTime + effectiveDays（查询时计算）
+          备注: Expired 是查询时计算的虚拟状态，不持久化到数据库
+      - 名称: Coupon
+        表名: proxy_coupon
+        字段:
+          - id: Integer, 主键自增
+          - code: String, 兑换码
+          - domain: String, 代理域名，格式为 host:port
+          - type: String, 套餐类型
+          - quota: long, 流量配额(字节)
+          - effectiveDays: int, 有效天数
+          - boundUsername: String, 已绑定的用户名
+          - boundTime: long, 绑定时间
+        备注: Coupon兑换后会创建对应的Package
+        规则:
+          - 内容: 兑换码格式XXXX-XXXX-XXXX-XXXX，字符集排除易混淆字符(I/O/0/1)
+            关联属性: code
+            关联用例: [manager-server.创建套餐]
+      - 名称: Request
+        表名: proxy_request
+        字段:
+          - id: Long, 主键自增
+          - proxyInstanceId: long, 代理实例ID
+          - proxyDomain: String, 代理域名
+          - localRequestId: long, 本地请求ID(与proxyInstanceId联合唯一)
+          - username: String, 用户名
+          - clientAddr: String, 客户端地址
+          - host: String, 目标主机
+          - path: String, 请求路径
+          - userAgent: String
+          - secChUa: String
+          - tags: String, 标签(以|分隔)
+          - readBytes: long, 已读取字节数
+      - 名称: ProxyInstance
+        表名: proxy_instance
+        字段:
+          - id: Long, 主键自增
+          - domain: String, 代理域名，格式为 host:port
+        备注: proxy启动时注册自身获得唯一ID，用于Request记录中标识请求来源节点
+    关系:
+      - from: Package
+        to: Account
+        type: many-to-one
+        via: username
+      - from: Coupon
+        to: Account
+        type: many-to-one
+        via: boundUsername
+        备注: 绑定后关联，未绑定时为空
+      - from: Request
+        to: ProxyInstance
+        type: many-to-one
+        via: proxyInstanceId
+      - from: Request
+        to: Account
+        type: many-to-one
+        via: username
+    概览:
+      - from: Switch Game Player
+        to: manager-ui
+        label: 查询账户、绑定套餐
+        type: call
+        details: [查询账户详情, 绑定套餐]
+      - from: Admin
+        to: manager-ui
+        label: 创建账户、创建套餐
+        type: call
+        details: [创建账户, 创建套餐]
+      - from: manager-ui
+        to: manager-server
+        label: REST API 调用
+        type: call
+        details: [查询账户详情, 创建账户, 创建套餐, 绑定套餐]
+      - from: manager-server
+        to: proxy
+        label: 提供用户可用套餐数据
+        type: sync
+        details: [Get Available Packages]
+      - from: proxy
+        to: manager-server
+        label: 同步请求用量
+        type: call
+        details: [Sync Usage]
+      - from: Switch Game Console
+        to: proxy
+        label: HTTP/HTTPS 代理请求
+        type: call
+        details: [Do Proxy]
+      - from: proxy
+        to: http-proxy
+        label: 转发代理请求
+        type: call
+        details: [Proxy HTTP Request]
+    子系统:
+      - 名称: manager-ui
+        技术栈: 
+            语言: TypeScript
+            框架:
+              - React
+              - react-router-dom
+        页面:
+          - 名称: AccountPage
+            关联用例:
+              - 查询账户详情
+              - 绑定套餐
+            外部链接:
+              - 购买账号: https://item.taobao.com/item.htm?id=828597203393
+              - 购买券码: https://item.taobao.com/item.htm?id=829129514317
+            显示映射:
+              - 套餐类型: nintendo → "Switch加速包"，其他原样显示
+              - 速度版本: host前缀 xs → "(极速版)"，hs → "(高速版)"
+              - domain拆分: 按 host:port 拆分为"服务器"和"端口"两列
+          - 名称: AdminPage
+            关联用例:
+              - 创建账户
+              - 创建套餐
+        用例:
+          - 名称: 查询账户详情
+            执行者: Switch Game Player
+            关联:
+              - 关系: Include
+                子系统: manager-server
+                名称: 查询账户详情
+          - 名称: 创建账户
+            执行者: Admin
+            关联:
+              - 关系: Include
+                子系统: manager-server
+                名称: 创建账户
+          - 名称: 创建套餐
+            执行者: Admin
+            关联:
+              - 关系: Include
+                子系统: manager-server
+                名称: 创建套餐
+          - 名称: 绑定套餐
+            执行者: Switch Game Player
+            关联:
+              - 关系: Include
+                子系统: manager-server
+                名称: 绑定套餐
+      - 名称: manager-server
+        技术栈:
+          语言: Java
+          框架:
+            - Spring Boot
+            - Spring Data JPA
+        基础设施:
+          - 名称: MySQL
+            类型: database
+            描述: 单实例，存储所有业务数据(Account/Package/Coupon/Request)
+        用例:
+          - 名称: 创建账户
+            执行者: Admin
+            api路径: [/api/admin/accounts/batch]
+            规则:
+              - 需要adminKey验证
+              - 内容: 批量生成：指定idPrefix和count，同时为每个账户创建一个初始Package(Pending状态)
+                关联实体: [Account, Package]
+          - 名称: 创建套餐
+            执行者: Admin
+            api路径: [/api/admin/packages/batch]
+            规则:
+              - 需要adminKey验证
+              - 内容: 批量生成Coupon兑换码
+                关联实体: [Coupon.code]
+          - 名称: 查询账户详情
+            执行者: Switch Game Player
+            api路径: [/api/user/account]
+            规则:
+              - 需要username/password验证（adminKey也可作为密码使用）
+              - 返回用户名及其所有Package列表
+          - 名称: 绑定套餐
+            执行者: Switch Game Player
+            api路径: [/api/user/bindCoupon]
+            规则:
+              - 需要username/password验证
+              - 内容: 用户提供兑换码，校验码有效且未被使用后，绑定Coupon并根据其属性创建Pending状态的Package
+                关联实体: [Coupon, Package]
+          - 名称: Get Available Packages
+            执行者: proxy
+            api路径: [/api/internal/users]
+          - 名称: Sync Usage
+            执行者: proxy
+            api路径: [/api/internal/syncUsage]
+            规则:
+              - 内容: 扣减Package优先级：优先精确匹配tag的Active套餐（旧套餐优先），其次Pending套餐；若请求非freedom标签则fallback到freedom类型套餐；仍无则依次使用Expired、Exhausted套餐（新套餐优先）。单个套餐不够扣时填满后继续扣下一个，Exhausted套餐仍可继续累计用量。
+                关联实体: [Package.usedQuota, Package.status]
+              - 内容: Pending套餐首次扣减时自动激活
+                关联实体: [Package.status]
+      - 名称: proxy
+        技术栈:
+          语言: Go
+        基础设施:
+          - 名称: Prometheus
+            类型: monitoring
+            描述: 请求量、延迟等指标采集
+        用例:
+          - 名称: Do Proxy
+            执行者: Switch Game Console
+            规则:
+              - '使用HTTP Basic Auth（Proxy-Authorization头）进行用户认证，认证失败返回 407 Proxy Authentication Required + Proxy-Authenticate: Basic realm="proxy" header'
+              - 根据Account的Available Package进行放行，只在建立连接时检查，下载到一半不会断开连接
+              - 非代理请求（非CONNECT且无协议前缀的请求）转发到本地资源服务地址(resaddr)，不做认证
+              - 根据请求host/UA计算tag：nintendo域名(*.nintendo.com/*.nintendo.net)→nintendo标签；UA含(nn且host为*.amazonaws.com且path含upload→nintendo标签；其他→freedom标签
+              - 每10秒从manager-server轮询加载所有用户数据
+              - 请求变更批量积攒，每5秒或满1000条同步一次
+            关联: 
+              - 关系: Include
+                子系统: manager-server
+                名称: Get Available Packages
+              - 关系: Include
+                子系统: manager-server
+                名称: Sync Usage
+              - 关系: Include
+                子系统: http-proxy
+                名称: Proxy HTTP Request
+      - 名称: http-proxy
+        技术栈:
+          实现: 任意HTTP代理应用
+        用例:
+          - 名称: Proxy HTTP Request
+            执行者: proxy

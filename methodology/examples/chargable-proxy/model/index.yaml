@@ -1,0 +1,112 @@
+schema_version: "7.0"
+sequences:
+  org: 1
+  bw: 1
+  ep: 2
+  pt: 2
+  buc: 5
+  ent: 10
+  app: 4
+  auc: 20
+  role: 1
+  vo: 1
+  svc: 2
+  evt: 3
+  pg: 4
+  rule: 59
+  res: 3
+business:
+  organization:
+    - { id: org-001, name: Chargable Proxy Service }
+  business-worker:
+    - { id: bw-001, name: Admin }
+  external-party:
+    - id: ep-001
+      name: Switch Game Players
+      participant:
+        - { id: pt-001, name: Player }
+        - { id: pt-002, name: Switch Console }
+    - { id: ep-002, name: Taobao E-Commerce Platform }
+  business-use-case:
+    - { id: buc-001, name: Accelerate Game Downloads }
+    - { id: buc-002, name: Activate Service }
+    - { id: buc-003, name: Operate Proxy Service }
+    - { id: buc-004, name: Sell via Taobao (Auto-Fulfillment) }
+  entity:
+    - { id: ent-001, name: Account }
+    - { id: ent-002, name: Package }
+    - { id: ent-003, name: RedemptionCode }
+    - { id: ent-004, name: UsageLog }
+    - { id: ent-005, name: TaobaoOrder }
+    - { id: ent-006, name: ProxyTier }
+    - { id: ent-007, name: PackageTemplate }
+    - { id: ent-008, name: TaobaoSku }
+applications:
+  application:
+    - id: app-001
+      name: manager-server
+      app-use-case:
+        - package: Account & Package Management
+          app-use-case:
+            - { id: auc-001, name: BatchCreateAccounts }
+            - { id: auc-002, name: CreatePackages }
+            - { id: auc-003, name: GenerateRedemptionCodes }
+        - package: Taobao Integration
+          app-use-case:
+            - { id: auc-004, name: ManageSkuMapping }
+            - { id: auc-005, name: ReceiveTradeNotification }
+            - { id: auc-006, name: AutoFulfillOrder }
+            - { id: auc-007, name: HandleRefund }
+            - { id: auc-008, name: SyncUnprocessedOrders }
+        - package: Player Self-Service
+          app-use-case:
+            - { id: auc-009, name: RedeemCode }
+            - { id: auc-010, name: QueryAccountDetail }
+        - package: Internal API
+          app-use-case:
+            - { id: auc-011, name: SyncAccountData }
+            - { id: auc-012, name: ReportUsage }
+      role:
+        - { id: role-001, name: UsageConsumer }
+      entity:
+        - { id: ent-009, name: PackageTemplate }
+        - { id: ent-010, name: TaobaoOrder }
+      value-object:
+        - { id: vo-001, name: UsageRecord }
+      domain-service:
+        - { id: svc-001, name: PackageActivator }
+        - { id: svc-002, name: SkuToPackageMapper }
+      domain-event:
+        - { id: evt-001, name: PackageActivated }
+        - { id: evt-002, name: PackageExhausted }
+        - { id: evt-003, name: AccountCreated }
+      resource:
+        - { id: res-001, name: POST /api/accounts/batch }
+        - { id: res-002, name: taobao.trade.notify }
+        - { id: res-003, name: taobao_order }
+    - id: app-002
+      name: manager-ui
+      app-use-case:
+        - package: Admin Operations
+          app-use-case:
+            - { id: auc-013, name: BatchCreateAccounts }
+            - { id: auc-014, name: CreatePackages }
+            - { id: auc-015, name: GenerateRedemptionCodes }
+            - { id: auc-016, name: ManageSkuMapping }
+        - package: Player Self-Service
+          app-use-case:
+            - { id: auc-017, name: RedeemCode }
+            - { id: auc-018, name: QueryAccount }
+      page:
+        - { id: pg-001, name: AdminDashboard }
+        - { id: pg-002, name: SkuMappingConfigPage }
+        - { id: pg-003, name: TaobaoOrdersPage }
+        - { id: pg-004, name: AccountDetailPage }
+    - id: app-003
+      name: auth-proxy
+      app-use-case:
+        - { id: auc-019, name: AuthenticateAndForward }
+    - id: app-004
+      name: squid
+      app-use-case:
+        - { id: auc-020, name: ForwardRequest }

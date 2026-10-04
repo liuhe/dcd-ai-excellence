@@ -1,0 +1,104 @@
+name: manager-ui
+type: frontend
+tech_stack:
+  language: TypeScript
+  frameworks: [React]
+
+use_cases:
+  - name: BatchCreateAccounts
+    package: Admin Operations
+    actor: Admin
+    rules:
+      - content: Provide a form with count input; on submit call manager-server API and display created credentials with CSV export
+    associations:
+      - relation: Include
+        application: manager-server
+        name: BatchCreateAccounts
+
+  - name: CreatePackages
+    package: Admin Operations
+    actor: Admin
+    rules:
+      - content: Provide a form to select account and specify package parameters (quota, validity, name); on submit call manager-server API
+    associations:
+      - relation: Include
+        application: manager-server
+        name: CreatePackages
+
+  - name: GenerateRedemptionCodes
+    package: Admin Operations
+    actor: Admin
+    rules:
+      - content: Provide a form with batch size, package template selection; on submit call manager-server API and display codes with export option
+    associations:
+      - relation: Include
+        application: manager-server
+        name: GenerateRedemptionCodes
+
+  - name: ManageSkuMapping
+    package: Admin Operations
+    actor: Admin
+    rules:
+      - content: Show editable table of TaobaoSku mappings; support inline add/edit/disable with real-time validation
+    associations:
+      - relation: Include
+        application: manager-server
+        name: ManageSkuMapping
+
+  - name: RedeemCode
+    package: Player Self-Service
+    actor: Player
+    rules:
+      - content: Provide a redemption code input field on the account detail page; on submit call manager-server API and refresh package list
+    associations:
+      - relation: Include
+        application: manager-server
+        name: RedeemCode
+
+  - name: QueryAccount
+    package: Player Self-Service
+    actor: Player
+    rules:
+      - content: Display account info, package list with usage progress bars, and redemption history
+    associations:
+      - relation: Include
+        application: manager-server
+        name: QueryAccountDetail
+
+pages:
+  - name: AdminDashboard
+    related_use_cases:
+      - BatchCreateAccounts
+      - CreatePackages
+      - GenerateRedemptionCodes
+    display_mappings:
+      - Show account list with status, creation date, and bound packages
+      - Show batch creation form with count input and CSV export button
+      - Show redemption code generation form with batch size, quota, and validity inputs
+
+  - name: SkuMappingConfigPage
+    related_use_cases:
+      - ManageSkuMapping
+    display_mappings:
+      - Show table of SKU-to-package mappings (skuId, skuName, quotaBytes, validityDays, active)
+      - Inline editing for adding/updating/disabling mappings
+
+  - name: TaobaoOrdersPage
+    related_use_cases:
+      - ReceiveTradeNotification
+      - AutoFulfillOrder
+      - HandleRefund
+    display_mappings:
+      - Show list of Taobao orders with status, buyer, SKU, linked account, timestamps
+      - Filter by status (Received/Fulfilled/DeliveryFailed/Refunded)
+      - Manual retry button for DeliveryFailed orders
+      - Show alert banner for orders that exceeded retry limit
+
+  - name: AccountDetailPage
+    related_use_cases:
+      - QueryAccountDetail
+      - RedeemCode
+    display_mappings:
+      - Show account info (username, status, created date)
+      - Show packages as cards with progress bar (usedBytes / quotaBytes) and status badge
+      - Show redemption code input field for self-service activation

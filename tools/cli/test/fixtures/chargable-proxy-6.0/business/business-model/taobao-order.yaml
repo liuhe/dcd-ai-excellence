@@ -1,0 +1,97 @@
+name: TaobaoOrder
+fields:
+  - name: id
+    type: Long
+    desc: auto-increment primary key
+  - name: taobaoTradeId
+    type: String
+    desc: unique, Taobao trade ID (tid)
+  - name: taobaoOrderId
+    type: String
+    desc: Taobao sub-order ID (oid), nullable for single-item orders
+  - name: skuId
+    type: String
+    desc: Taobao SKU ID
+  - name: buyerNick
+    type: String
+    desc: buyer's Taobao nickname
+  - name: accountId
+    type: Long
+    desc: references Account, nullable until fulfilled
+  - name: redemptionCodeId
+    type: Long
+    desc: references RedemptionCode, nullable
+  - name: status
+    type: TaobaoOrderStatus(Received/Fulfilled/DeliveryFailed/Refunded)
+    desc: order processing state
+  - name: paidAt
+    type: LocalDateTime
+    desc: when the buyer paid
+  - name: fulfilledAt
+    type: LocalDateTime
+    desc: when auto-fulfillment completed, nullable
+  - name: failReason
+    type: String
+    desc: reason for delivery failure, nullable
+  - name: retryCount
+    type: Integer
+    desc: number of delivery retries, default 0
+  - name: createdAt
+    type: LocalDateTime
+    desc: creation time
+summary: >
+  Tracks each Taobao trade and its mapping to local account/package. Used for reconciliation, refund
+  handling, and troubleshooting.
+state_machine:
+  field: status
+  states:
+    - Received
+    - Fulfilled
+    - DeliveryFailed
+    - Refunded
+  transitions:
+    - from: Received
+      to: Fulfilled
+      trigger: Account + package created and credentials delivered to buyer via Taobao API
+    - from: Received
+      to: DeliveryFailed
+      trigger: Taobao delivery API call failed (will retry)
+    - from: DeliveryFailed
+      to: Fulfilled
+      trigger: Retry succeeds
+    - from: DeliveryFailed
+      to: DeliveryFailed
+      trigger: Retry fails again (increment retryCount)
+    - from: Fulfilled
+      to: Refunded
+      trigger: Taobao refund notification received; account and package disabled
+rules:
+  - content: >-
+      Processing must be idempotent — receiving the same taobaoTradeId multiple times must not
+      create duplicate accounts
+    field: taobaoTradeId
+    related_use_cases:
+      - manager-server.ReceiveTradeNotification
+  - content: When retryCount exceeds 3, stop retrying and alert admin
+    field: retryCount
+    related_use_cases:
+      - manager-server.AutoFulfillOrder
+relationships:
+  - kind: associates
+    target: Account
+    target_kind: business-entity
+    cardinality: many-to-one
+    via: accountId
+    note: Links the Taobao order to the provisioned proxy account
+  - kind: associates
+    target: RedemptionCode
+    target_kind: business-entity
+    cardinality: one-to-one
+    via: redemptionCodeId
+    note: Optional — redemption code generated for the buyer to use for renewals
+  - kind: associates
+    target: TaobaoSku
+    target_kind: business-entity
+    cardinality: many-to-one
+    via: skuId
+    note: Records which SKU was ordered, used to look up package spec during fulfillment

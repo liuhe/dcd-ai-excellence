@@ -1,0 +1,399 @@
+name: manager-server
+type: backend
+tech_stack:
+  language: Java
+  frameworks:
+    - Spring Boot
+    - Spring Data JPA
+  storage: MySQL
+infrastructure:
+  - name: MySQL
+    type: database
+    description: Primary data store for accounts, packages, redemption codes, and usage logs
+use_cases:
+  - name: BatchCreateAccounts
+    package: Account & Package Management
+    actor: manager-ui
+    api:
+      - POST /api/admin/accounts/batch
+    rules:
+      - content: Accept a count parameter; generate that many accounts with random usernames and passwords
+        related_entities:
+          - Account.username
+          - Account.password
+      - content: Usernames should follow a pattern like "player_XXXXX" for readability
+        related_entities:
+          - Account.username
+      - content: Return the full list of created credentials for export (CSV or JSON)
+  - name: CreatePackages
+    package: Account & Package Management
+    actor: manager-ui
+    api:
+      - POST /api/admin/packages
+    rules:
+      - content: Admin specifies accountId, quotaBytes, validityDays, and package name
+        related_entities:
+          - Package.accountId
+          - Package.quotaBytes
+          - Package.name
+      - content: >-
+          Package is created in Pending status; it activates when the current active package ends,
+          or immediately if none is active
+        related_entities:
+          - Package.status
+  - name: GenerateRedemptionCodes
+    package: Account & Package Management
+    actor: manager-ui
+    api:
+      - POST /api/admin/codes/batch
+    rules:
+      - content: Admin specifies count, quotaBytes, validityDays, and packageName for the batch
+        related_entities:
+          - RedemptionCode.quotaBytes
+          - RedemptionCode.validityDays
+          - RedemptionCode.packageName
+      - content: Generate unique random codes; return the list for export
+        related_entities:
+          - RedemptionCode.code
+  - name: ManageSkuMapping
+    package: Taobao Integration
+    actor: manager-ui
+    api:
+      - GET /api/admin/sku-mappings
+      - POST /api/admin/sku-mappings
+      - PUT /api/admin/sku-mappings/{id}
+      - DELETE /api/admin/sku-mappings/{id}
+    rules:
+      - content: >-
+          Admin configures which Taobao SKU maps to which package specification (quotaBytes,
+          validityDays, packageName)
+        related_entities:
+          - TaobaoSku
+      - content: SKU ID must be unique; cannot have two mappings for the same SKU
+        related_entities:
+          - TaobaoSku.skuId
+  - name: ReceiveTradeNotification
+    package: Taobao Integration
+    actor: Taobao E-Commerce Platform
+    api:
+      - POST /api/taobao/tmc/callback
+    rules:
+      - content: >-
+          Receive TMC (Taobao Message Center) trade notifications. Listen for trade_TradeBuyerPay
+          (payment confirmed) and refund events.
+      - content: >-
+          On payment notification: create a TaobaoOrder record in Received status, then trigger
+          AutoFulfillOrder asynchronously.
+        related_entities:
+          - TaobaoOrder.status
+          - TaobaoOrder.taobaoTradeId
+      - content: >-
+          Must be idempotent — duplicate notifications for the same trade ID must not create
+          duplicate records.
+        related_entities:
+          - TaobaoOrder.taobaoTradeId
+    associations:
+      - relation: Include
+        name: AutoFulfillOrder
+  - name: AutoFulfillOrder
+    package: Taobao Integration
+    rules:
+      - content: 'Step 1: Call taobao.trade.get to fetch order details (SKU, buyer info).'
+        related_entities:
+          - TaobaoOrder.skuId
+          - TaobaoOrder.buyerNick
+      - content: >-
+          Step 2: Look up TaobaoSku to determine package spec. If no mapping found, mark order as
+          DeliveryFailed with reason "unmapped SKU".
+        related_entities:
+          - TaobaoSku.skuId
+          - TaobaoOrder.status
+      - content: >-
+          Step 3 (branch by TaobaoSku.fulfillmentType): NewAccount → create Account (username +
+          password) + Package (specs from PackageTemplate) + RedemptionCode (for buyer to use for
+          future renewals). RedemptionOnly → create only a RedemptionCode (buyer redeems it on their
+          existing account).
+        related_entities:
+          - TaobaoSku.fulfillmentType
+          - Account
+          - Package
+          - RedemptionCode
+          - PackageTemplate
+      - content: >-
+          Step 4: Call alibaba.trade.logistics.dummy.send to confirm delivery on Taobao. NewAccount:
+          include credentials (username, password, server address) in the delivery message.
+          RedemptionOnly: include the redemption code in the delivery message.
+      - content: >-
+          Step 5: Update TaobaoOrder to Fulfilled status with accountId (if NewAccount) and
+          redemptionCodeId.
+        related_entities:
+          - TaobaoOrder.status
+          - TaobaoOrder.fulfilledAt
+      - content: >-
+          On any failure: mark TaobaoOrder as DeliveryFailed, record failReason, and schedule retry
+          with exponential backoff. Stop after 3 retries and alert admin.
+        related_entities:
+          - TaobaoOrder.status
+          - TaobaoOrder.failReason
+          - TaobaoOrder.retryCount
+    associations: []
+  - name: HandleRefund
+    package: Taobao Integration
+    actor: Taobao E-Commerce Platform
+    api:
+      - POST /api/taobao/tmc/callback
+    rules:
+      - content: >-
+          On Taobao refund success notification: look up TaobaoOrder by trade ID, disable the
+          associated Account and Package.
+        related_entities:
+          - TaobaoOrder.status
+          - Account.status
+          - Package.status
+      - content: Update TaobaoOrder status to Refunded
+        related_entities:
+          - TaobaoOrder.status
+  - name: SyncUnprocessedOrders
+    package: Taobao Integration
+    actor: System
+    rules:
+      - content: >-
+          Scheduled task (e.g., every 5 minutes): query Taobao API for recent paid trades and check
+          if any are missing from local TaobaoOrder table. Process any missing orders as a fallback
+          for lost TMC messages.
+        related_entities:
+          - TaobaoOrder.taobaoTradeId
+      - content: Also retry DeliveryFailed orders where retryCount < 3.
+        related_entities:
+          - TaobaoOrder.status
+          - TaobaoOrder.retryCount
+    associations:
+      - relation: Include
+        name: AutoFulfillOrder
+  - name: RedeemCode
+    package: Player Self-Service
+    actor: manager-ui
+    api:
+      - POST /api/accounts/{accountId}/redeem
+    rules:
+      - content: Player provides their accountId and the redemption code string
+      - content: Verify the code exists and is in Available status; reject if already redeemed or disabled
+        related_entities:
+          - RedemptionCode.status
+      - content: Atomically update code status to Redeemed and create a new Package bound to the account
+        related_entities:
+          - RedemptionCode.status
+          - Package
+      - content: >-
+          The new package inherits quotaBytes, validityDays, and packageName from the redemption code
+        related_entities:
+          - Package.quotaBytes
+          - Package.name
+      - content: If the account has no active package, the new package is immediately activated
+        related_entities:
+          - Package.status
+  - name: QueryAccountDetail
+    package: Player Self-Service
+    actor: manager-ui
+    api:
+      - GET /api/accounts/{accountId}
+    rules:
+      - content: Return account info, list of packages (with current usage), and redemption history
+      - content: Compute package status in real time — check expiresAt and usedBytes against quotaBytes
+        related_entities:
+          - Package.status
+          - Package.expiresAt
+          - Package.usedBytes
+          - Package.quotaBytes
+  - name: SyncAccountData
+    package: Internal API
+    actor: auth-proxy
+    api:
+      - GET /api/internal/accounts/active
+    rules:
+      - content: >-
+          Return all active accounts with their current active package info (accountId, username,
+          password, packageId, quotaBytes, usedBytes, expiresAt).
+        related_entities:
+          - Account
+          - Package
+      - content: >-
+          auth-proxy calls this on startup to load all data into local memory, then polls every 30
+          seconds for incremental changes.
+      - content: >-
+          Support an optional "since" parameter so auth-proxy can fetch only records changed after
+          the last sync, reducing payload size.
+      - content: >-
+          Even if manager-server is temporarily unavailable, auth-proxy continues serving requests
+          using the last synced data — no single point of failure.
+  - name: ReportUsage
+    package: Internal API
+    actor: auth-proxy
+    api:
+      - POST /api/internal/usage
+    rules:
+      - content: >-
+          Accept batch of usage records (accountId, packageId, bytesTransferred, requestHost,
+          timestamp)
+        related_entities:
+          - UsageLog
+      - content: Atomically increment Package.usedBytes for each record
+        related_entities:
+          - Package.usedBytes
+      - content: >-
+          If usedBytes >= quotaBytes after update, mark package as Exhausted and try to activate
+          next Pending package
+        related_entities:
+          - Package.status
+domain_model:
+  roles:
+    - name: UsageConsumer
+      methods:
+        - 'applyUsage(record: UsageRecord): 增量扣减并触发可能的 Exhausted 状态转换'
+  value_objects:
+    - name: UsageRecord
+      fields:
+        - name: accountId
+          type: Long
+          desc: 引用 Account
+        - name: packageId
+          type: Long
+          desc: 引用 Package
+        - name: bytesTransferred
+          type: Long
+          desc: 本次记录的转发字节数
+        - name: timestamp
+          type: Long
+          desc: 毫秒时间戳
+  repositories:
+    - name: AccountRepository
+      operations:
+        - findById
+        - findByUsername
+        - save
+        - findActiveAccounts
+      relationships:
+        - kind: composition
+          target: AccountAggregate
+          target_kind: aggregate
+    - name: PackageTemplateRepository
+      operations:
+        - findById
+        - findBySkuMapping
+        - save
+      relationships:
+        - kind: composition
+          target: PackageTemplateAggregate
+          target_kind: aggregate
+    - name: TaobaoOrderRepository
+      operations:
+        - findByOrderId
+        - save
+        - markProcessed
+      relationships:
+        - kind: composition
+          target: TaobaoOrderAggregate
+          target_kind: aggregate
+  domain_services:
+    - name: PackageActivator
+      operations:
+        - 'activateNextPending(accountId): 把当前 Active 标记为 Exhausted/Expired，把下一个 Pending 设为 Active'
+      summary: 跨 Account 与 Package 的状态机协调，不属于单一聚合
+    - name: SkuToPackageMapper
+      operations:
+        - 'resolveTemplate(skuId): 查 SkuPackageMapping 配置，返回对应的 PackageTemplate'
+      summary: 静态映射，无副作用，可视为查找服务
+  domain_events:
+    - name: PackageActivated
+      published_when: 一个 Package 从 Pending 转入 Active
+      payload:
+        - accountId: Long
+        - packageId: Long
+        - quotaBytes: Long
+    - name: PackageExhausted
+      published_when: 当 usedBytes >= quotaBytes 时（增量更新触发）
+      payload:
+        - accountId: Long
+        - packageId: Long
+    - name: AccountCreated
+      published_when: 批量创建账户成功后，每个 Account 一次
+      payload:
+        - accountId: Long
+        - username: String
+  entities:
+    - name: PackageTemplate
+      fields:
+        - name: id
+          type: Long
+          desc: auto-increment primary key
+        - name: name
+          type: String
+          desc: display name for packages created from this template
+        - name: quotaBytes
+          type: Long
+          desc: traffic quota in bytes
+        - name: validityDays
+          type: Integer
+          desc: package validity in days
+        - name: proxyTierId
+          type: Long
+          desc: references ProxyTier
+        - name: accessScope
+          type: String
+          desc: '''nintendo'' or ''freedom'''
+        - name: active
+          type: Boolean
+          desc: whether template is available for use
+      invariants:
+        - quotaBytes 与 validityDays 创建后不可变更（变更需新建模板）
+      relationships:
+        - kind: realizes
+          target: PackageTemplate
+          target_kind: business-entity
+    - name: TaobaoOrder
+      fields:
+        - name: id
+          type: Long
+          desc: auto-increment primary key
+        - name: taobaoTradeId
+          type: String
+          desc: unique, Taobao trade ID (tid)
+        - name: taobaoOrderId
+          type: String
+          desc: Taobao sub-order ID (oid), nullable
+        - name: skuId
+          type: String
+          desc: Taobao SKU ID
+        - name: buyerNick
+          type: String
+          desc: buyer's Taobao nickname
+        - name: accountId
+          type: Long
+          desc: references Account, nullable until fulfilled
+        - name: redemptionCodeId
+          type: Long
+          desc: references RedemptionCode, nullable
+        - name: status
+          type: TaobaoOrderStatus(Received/Fulfilled/DeliveryFailed/Refunded)
+        - name: paidAt
+          type: LocalDateTime
+          desc: when the buyer paid
+        - name: fulfilledAt
+          type: LocalDateTime
+          desc: when fulfillment completed, nullable
+        - name: failReason
+          type: String
+          desc: delivery failure reason, nullable
+        - name: retryCount
+          type: Integer
+          desc: number of delivery retries, default 0
+        - name: createdAt
+          type: LocalDateTime
+          desc: creation time
+      invariants:
+        - 同一 taobaoTradeId 重复处理时幂等
+      relationships:
+        - kind: realizes
+          target: TaobaoOrder
+          target_kind: business-entity
+  enums: []

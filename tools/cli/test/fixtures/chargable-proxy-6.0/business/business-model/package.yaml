@@ -1,0 +1,84 @@
+name: Package
+fields:
+  - name: id
+    type: Long
+    desc: auto-increment primary key
+  - name: accountId
+    type: Long
+    desc: references Account
+  - name: name
+    type: String
+    desc: display name (e.g., '50GB Monthly')
+  - name: proxyTierId
+    type: Long
+    desc: references ProxyTier, determines which speed tier / proxy node serves this package
+  - name: accessScope
+    type: String
+    desc: 'traffic routing scope: ''nintendo'' = Nintendo CDN only, ''freedom'' = all traffic'
+  - name: quotaBytes
+    type: Long
+    desc: traffic quota in bytes
+  - name: usedBytes
+    type: Long
+    desc: traffic consumed in bytes, default 0
+  - name: activatedAt
+    type: LocalDateTime
+    desc: when the package was activated
+  - name: expiresAt
+    type: LocalDateTime
+    desc: expiration time
+  - name: status
+    type: PackageStatus(Pending/Active/Expired/Exhausted)
+    desc: package state
+  - name: createdAt
+    type: LocalDateTime
+    desc: creation time
+summary: >
+  A package grants an account a certain amount of proxy traffic for a limited time. Multiple
+  packages can be bound to one account; the proxy uses the first active one. proxyTierId determines
+  which speed tier this package uses (e.g., high-speed vs ultra-speed). accessScope controls what
+  traffic is routed: 'nintendo' for Nintendo CDN only, 'freedom' for all.
+state_machine:
+  field: status
+  states:
+    - Pending
+    - Active
+    - Expired
+    - Exhausted
+  transitions:
+    - from: Pending
+      to: Active
+      trigger: Redemption code is redeemed, or admin manually activates
+    - from: Active
+      to: Exhausted
+      trigger: usedBytes >= quotaBytes
+    - from: Active
+      to: Expired
+      trigger: Current time exceeds expiresAt
+  summary: >
+    Expired is computed at query time based on expiresAt, not persisted via a cron job. When proxy
+    checks validity, it evaluates both usedBytes and expiresAt in real time.
+rules:
+  - content: >-
+      Only one package per account should be Active at a time; others remain Pending until the
+      current one is exhausted or expired
+    related_use_cases:
+      - auth-proxy.AuthenticateAndForward
+  - content: >-
+      When an active package is exhausted or expired, the next Pending package (by createdAt order)
+      is automatically activated
+    related_use_cases:
+      - auth-proxy.AuthenticateAndForward
+relationships:
+  - kind: associates
+    target: Account
+    target_kind: business-entity
+    cardinality: many-to-one
+    via: accountId
+    note: An account can have multiple packages (current + future)
+  - kind: associates
+    target: ProxyTier
+    target_kind: business-entity
+    cardinality: many-to-one
+    via: proxyTierId
+    note: Which speed tier this package uses

@@ -1,0 +1,196 @@
+app-use-case:
+  - id: auc-001
+    name: BatchCreateAccounts
+    api:
+      - POST /api/admin/accounts/batch
+    actor: app-002
+    rules:
+      - id: rule-011
+        content: Accept a count parameter; generate that many accounts with random usernames and passwords
+      - id: rule-012
+        content: Usernames should follow a pattern like "player_XXXXX" for readability
+      - id: rule-013
+        content: Return the full list of created credentials for export (CSV or JSON)
+    exposes:
+      - res-001
+    uses:
+      - target: ent-009
+        mode: read
+  - id: auc-002
+    name: CreatePackages
+    api:
+      - POST /api/admin/packages
+    actor: app-002
+    rules:
+      - id: rule-014
+        content: Admin specifies accountId, quotaBytes, validityDays, and package name
+      - id: rule-015
+        content: >-
+          Package is created in Pending status; it activates when the current active package ends, or immediately if
+          none is active
+  - id: auc-003
+    name: GenerateRedemptionCodes
+    api:
+      - POST /api/admin/codes/batch
+    actor: app-002
+    rules:
+      - id: rule-016
+        content: Admin specifies count, quotaBytes, validityDays, and packageName for the batch
+      - id: rule-017
+        content: Generate unique random codes; return the list for export
+  - id: auc-004
+    name: ManageSkuMapping
+    api:
+      - GET /api/admin/sku-mappings
+      - POST /api/admin/sku-mappings
+      - PUT /api/admin/sku-mappings/{id}
+      - DELETE /api/admin/sku-mappings/{id}
+    actor: app-002
+    rules:
+      - id: rule-018
+        content: Admin configures which Taobao SKU maps to which package specification (quotaBytes, validityDays, packageName)
+        related_entities:
+          - ent-008
+      - id: rule-019
+        content: SKU ID must be unique; cannot have two mappings for the same SKU
+  - id: auc-005
+    name: ReceiveTradeNotification
+    api:
+      - POST /api/taobao/tmc/callback
+    actor: ep-002
+    includes:
+      - auc-006
+    rules:
+      - id: rule-020
+        content: >-
+          Receive TMC (Taobao Message Center) trade notifications. Listen for trade_TradeBuyerPay (payment confirmed)
+          and refund events.
+      - id: rule-021
+        content: >-
+          On payment notification: create a TaobaoOrder record in Received status, then trigger AutoFulfillOrder
+          asynchronously.
+      - id: rule-022
+        content: Must be idempotent — duplicate notifications for the same trade ID must not create duplicate records.
+    uses:
+      - target: ent-010
+        mode: write
+  - id: auc-006
+    name: AutoFulfillOrder
+    rules:
+      - id: rule-023
+        content: "Step 1: Call taobao.trade.get to fetch order details (SKU, buyer info)."
+      - id: rule-024
+        content: >-
+          Step 2: Look up TaobaoSku to determine package spec. If no mapping found, mark order as DeliveryFailed with
+          reason "unmapped SKU".
+      - id: rule-025
+        content: >-
+          Step 3 (branch by TaobaoSku.fulfillmentType): NewAccount → create Account (username + password) + Package
+          (specs from PackageTemplate) + RedemptionCode (for buyer to use for future renewals). RedemptionOnly → create
+          only a RedemptionCode (buyer redeems it on their existing account).
+        related_entities:
+          - ent-001
+          - ent-002
+          - ent-003
+          - ent-009
+      - id: rule-026
+        content: >-
+          Step 4: Call alibaba.trade.logistics.dummy.send to confirm delivery on Taobao. NewAccount: include credentials
+          (username, password, server address) in the delivery message. RedemptionOnly: include the redemption code in
+          the delivery message.
+      - id: rule-027
+        content: "Step 5: Update TaobaoOrder to Fulfilled status with accountId (if NewAccount) and redemptionCodeId."
+      - id: rule-028
+        content: >-
+          On any failure: mark TaobaoOrder as DeliveryFailed, record failReason, and schedule retry with exponential
+          backoff. Stop after 3 retries and alert admin.
+  - id: auc-007
+    name: HandleRefund
+    api:
+      - POST /api/taobao/tmc/callback
+    actor: ep-002
+    rules:
+      - id: rule-029
+        content: >-
+          On Taobao refund success notification: look up TaobaoOrder by trade ID, disable the associated Account and
+          Package.
+      - id: rule-030
+        content: Update TaobaoOrder status to Refunded
+  - id: auc-008
+    name: SyncUnprocessedOrders
+    includes:
+      - auc-006
+    rules:
+      - id: rule-031
+        content: >-
+          Scheduled task (e.g., every 5 minutes): query Taobao API for recent paid trades and check if any are missing
+          from local TaobaoOrder table. Process any missing orders as a fallback for lost TMC messages.
+      - id: rule-032
+        content: Also retry DeliveryFailed orders where retryCount < 3.
+  - id: auc-009
+    name: RedeemCode
+    api:
+      - POST /api/accounts/{accountId}/redeem
+    actor: app-002
+    rules:
+      - id: rule-033
+        content: Player provides their accountId and the redemption code string
+      - id: rule-034
+        content: Verify the code exists and is in Available status; reject if already redeemed or disabled
+      - id: rule-035
+        content: Atomically update code status to Redeemed and create a new Package bound to the account
+        related_entities:
+          - ent-002
+      - id: rule-036
+        content: The new package inherits quotaBytes, validityDays, and packageName from the redemption code
+      - id: rule-037
+        content: If the account has no active package, the new package is immediately activated
+  - id: auc-010
+    name: QueryAccountDetail
+    api:
+      - GET /api/accounts/{accountId}
+    actor: app-002
+    rules:
+      - id: rule-038
+        content: Return account info, list of packages (with current usage), and redemption history
+      - id: rule-039
+        content: Compute package status in real time — check expiresAt and usedBytes against quotaBytes
+  - id: auc-011
+    name: SyncAccountData
+    api:
+      - GET /api/internal/accounts/active
+    actor: app-003
+    rules:
+      - id: rule-040
+        content: >-
+          Return all active accounts with their current active package info (accountId, username, password, packageId,
+          quotaBytes, usedBytes, expiresAt).
+        related_entities:
+          - ent-001
+          - ent-002
+      - id: rule-041
+        content: >-
+          auth-proxy calls this on startup to load all data into local memory, then polls every 30 seconds for
+          incremental changes.
+      - id: rule-042
+        content: >-
+          Support an optional "since" parameter so auth-proxy can fetch only records changed after the last sync,
+          reducing payload size.
+      - id: rule-043
+        content: >-
+          Even if manager-server is temporarily unavailable, auth-proxy continues serving requests using the last synced
+          data — no single point of failure.
+  - id: auc-012
+    name: ReportUsage
+    api:
+      - POST /api/internal/usage
+    actor: app-003
+    rules:
+      - id: rule-044
+        content: Accept batch of usage records (accountId, packageId, bytesTransferred, requestHost, timestamp)
+        related_entities:
+          - ent-004
+      - id: rule-045
+        content: Atomically increment Package.usedBytes for each record
+      - id: rule-046
+        content: If usedBytes >= quotaBytes after update, mark package as Exhausted and try to activate next Pending package

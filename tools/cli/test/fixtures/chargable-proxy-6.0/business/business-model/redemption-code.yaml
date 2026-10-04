@@ -1,0 +1,58 @@
+name: RedemptionCode
+fields:
+  - name: id
+    type: Long
+    desc: auto-increment primary key
+  - name: code
+    type: String
+    desc: unique, the redemption code string
+  - name: packageTemplateId
+    type: Long
+    desc: references PackageTemplate, determines what Package to create on redemption
+  - name: status
+    type: CodeStatus(Available/Redeemed/Disabled)
+    desc: code state
+  - name: packageId
+    type: Long
+    desc: references Package, nullable; the package created when this code was redeemed
+  - name: redeemedAt
+    type: LocalDateTime
+    desc: when the code was redeemed, nullable
+  - name: createdAt
+    type: LocalDateTime
+    desc: creation time
+summary: >
+  Redemption codes are generated in batch by admin, then delivered to buyers via Taobao. When
+  redeemed, the system creates a Package based on the referenced PackageTemplate.
+state_machine:
+  field: status
+  states:
+    - Available
+    - Redeemed
+    - Disabled
+  transitions:
+    - from: Available
+      to: Redeemed
+      trigger: Player redeems the code for their account
+    - from: Available
+      to: Disabled
+      trigger: Admin disables unused code (e.g., refund scenario)
+rules:
+  - content: Code string must be unique and hard to guess (e.g., UUID-based or random alphanumeric)
+    field: code
+  - content: A code can only be redeemed once; concurrent redemption attempts must be handled atomically
+    related_use_cases:
+      - manager-server.RedeemCode
+relationships:
+  - kind: associates
+    target: Package
+    target_kind: business-entity
+    cardinality: one-to-one
+    via: packageId
+    note: The package created when this code was redeemed; nullable until redemption
+  - kind: associates
+    target: PackageTemplate
+    target_kind: business-entity
+    cardinality: many-to-one
+    via: packageTemplateId
+    note: Determines what Package to create when the code is redeemed

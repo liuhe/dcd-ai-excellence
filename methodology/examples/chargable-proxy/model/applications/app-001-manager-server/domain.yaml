@@ -1,0 +1,98 @@
+entity:
+  - id: ent-009
+    name: PackageTemplate
+    fields:
+      - id: Long, auto-increment primary key
+      - name: String, display name for packages created from this template
+      - quotaBytes: Long, traffic quota in bytes
+      - validityDays: Integer, package validity in days
+      - proxyTierId: Long, references ProxyTier
+      - accessScope: String, 'nintendo' or 'freedom'
+      - active: Boolean, whether template is available for use
+    invariants:
+      - quotaBytes 与 validityDays 创建后不可变更（变更需新建模板）
+    repository:
+      name: PackageTemplateRepository
+      operations:
+        - findById
+        - findBySkuMapping
+        - save
+    relationships:
+      - kind: realizes
+        target: ent-007
+  - id: ent-010
+    name: TaobaoOrder
+    fields:
+      - id: Long, auto-increment primary key
+      - taobaoTradeId: String, unique, Taobao trade ID (tid)
+      - taobaoOrderId: String, Taobao sub-order ID (oid), nullable
+      - skuId: String, Taobao SKU ID
+      - buyerNick: String, buyer's Taobao nickname
+      - accountId: Long, references Account, nullable until fulfilled
+      - redemptionCodeId: Long, references RedemptionCode, nullable
+      - status: TaobaoOrderStatus(Received/Fulfilled/DeliveryFailed/Refunded)
+      - paidAt: LocalDateTime, when the buyer paid
+      - fulfilledAt: LocalDateTime, when fulfillment completed, nullable
+      - failReason: String, delivery failure reason, nullable
+      - retryCount: Integer, number of delivery retries, default 0
+      - createdAt: LocalDateTime, creation time
+    invariants:
+      - 同一 taobaoTradeId 重复处理时幂等
+    repository:
+      name: TaobaoOrderRepository
+      operations:
+        - findByOrderId
+        - save
+        - markProcessed
+    relationships:
+      - kind: realizes
+        target: ent-005
+    uses:
+      - target: res-002
+        mode: subscribe
+      - target: res-003
+        mode: write
+value-object:
+  - id: vo-001
+    name: UsageRecord
+    fields:
+      - accountId: Long, 引用 Account
+      - packageId: Long, 引用 Package
+      - bytesTransferred: Long, 本次记录的转发字节数
+      - timestamp: Long, 毫秒时间戳
+role:
+  - id: role-001
+    name: UsageConsumer
+    methods:
+      - "applyUsage(record: UsageRecord): 增量扣减并触发可能的 Exhausted 状态转换"
+domain-service:
+  - id: svc-001
+    name: PackageActivator
+    operations:
+      - "activateNextPending(accountId): 把当前 Active 标记为 Exhausted/Expired，把下一个 Pending 设为 Active"
+    summary: 跨 Account 与 Package 的状态机协调，不属于单一聚合
+  - id: svc-002
+    name: SkuToPackageMapper
+    operations:
+      - "resolveTemplate(skuId): 查 SkuPackageMapping 配置，返回对应的 PackageTemplate"
+    summary: 静态映射，无副作用，可视为查找服务
+domain-event:
+  - id: evt-001
+    name: PackageActivated
+    published_when: 一个 Package 从 Pending 转入 Active
+    payload:
+      - accountId: Long
+      - packageId: Long
+      - quotaBytes: Long
+  - id: evt-002
+    name: PackageExhausted
+    published_when: 当 usedBytes >= quotaBytes 时（增量更新触发）
+    payload:
+      - accountId: Long
+      - packageId: Long
+  - id: evt-003
+    name: AccountCreated
+    published_when: 批量创建账户成功后，每个 Account 一次
+    payload:
+      - accountId: Long
+      - username: String

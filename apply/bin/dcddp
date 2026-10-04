@@ -1,0 +1,15 @@
+#!/usr/bin/env node
+// Stable entry point for the dcddp CLI.
+// Managed projects reference this path (<dcd-root>/apply/bin/dcddp); the internal
+// layout under tools/ may change freely without breaking them.
+// Resolves tsx from this repo so it works from any working directory.
+const { spawnSync } = require('node:child_process')
+const { resolve } = require('node:path')
+const { pathToFileURL } = require('node:url')
+
+const root = resolve(__dirname, '..', '..')
+const tsx = pathToFileURL(require.resolve('tsx', { paths: [root] })).href
+const entry = resolve(root, 'tools/cli/src/index.ts')
+
+const result = spawnSync(process.execPath, ['--import', tsx, entry, ...process.argv.slice(2)], { stdio: 'inherit' })
+process.exit(result.status ?? 1)

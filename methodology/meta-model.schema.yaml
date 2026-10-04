@@ -1,0 +1,684 @@
+# DCDDP Meta-Model Schema 7.0 (index + flat detail files)
+#
+# This schema defines the structure for declarative system modeling.
+# A model conforming to this schema provides enough information for
+# either a human or AI to derive a complete, runnable system.
+#
+# Conventions: see modeling-conventions.md (in same directory).
+# AI prompt: see ../apply/system-modeling-prompt.md.
+# Machine-readable source of truth for kinds / attrs / edges: tools/core/src/vocabulary.ts
+# (this file mirrors it for human and AI readers; `dcddp describe <kind>` prints the live version).
+#
+# Design principles:
+#   1. Users (human or AI) define WHAT; implementation layer derives HOW.
+#   2. Constraints reduce implementation choice space; natural-language rules leave room to judge.
+#   3. Configuration should be <10% of equivalent code volume.
+#   4. Models express intent and constraints; downstream layers fill in details.
+#   5. Human- AND AI-friendly storage: one overview file says what exists; details are flat,
+#      addressable by id, and never larger than a reader wants to open.
+#
+# =============================================================================
+# SCHEMA VERSIONING
+# =============================================================================
+#
+# Every model MUST declare its schema_version at the top of index.yaml:
+#
+#   schema_version: "7.0"
+#
+# Current schema version: 7.0
+# Tooling (@dcddp/core, @dcddp/cli) reads this to detect stale models.
+# Upgrading between versions: run `dcddp migrate` (writes migration-report.md).
+# Pre-7.0 models (business.yaml at the root) are migrated by 6.0 → 7.0.
+
+# =============================================================================
+# DIRECTORY STRUCTURE
+# =============================================================================
+#
+# A model is a DIRECTORY. index.yaml is the single source of EXISTENCE; everything
+# else is detail.
+#
+#   model/
+#   ├── index.yaml                      # every node: id + name; nesting = containment; packages
+#   ├── business/                       # business-view detail entries (flat, keyed by id)
+#   │   ├── actors.yaml                 #   organization / business-worker / external-party / participant
+#   │   ├── business-use-cases.yaml     #   business-use-case
+#   │   ├── systems.yaml                #   system / system-use-case
+#   │   └── entities.yaml               #   business entities (+ inline rules)
+#   ├── applications/
+#   │   ├── applications.yaml           #   application entries + `topology`
+#   │   └── <app-id>-<app-name>/        #   e.g. app-001-web  (loader matches the id prefix only)
+#   │       ├── use-cases.yaml          #     app-use-case (+ inline rules)
+#   │       ├── pages.yaml              #     page
+#   │       └── domain.yaml             #     entity / value-object / enum / role / domain-service / domain-event
+#   ├── deployment.yaml                 # deployment view (opaque to the graph; see FILE: deployment)
+#   └── diagrams/                       # optional SVG attachments referenced from attrs
+#
+# Three rules:
+#   1. A node exists iff it is listed in index.yaml (inline kinds — rules — live inside
+#      their owner's entry instead). A detail entry whose id is not in the index is an error.
+#   2. Detail files are flat attribute bags: a map of <kind> → [entries], each entry keyed
+#      by `id`. FILE BOUNDARIES CARRY NO MEANING — the loader reads every *.yaml under
+#      business/ and applications/. The layout above is the default the tools write to;
+#      a file over ~400 lines is sharded into a same-named directory.
+#   3. Containment edges live in index.yaml (nesting). All other edges live on the SOURCE
+#      node's detail entry, with the TARGET's id as the value.
+#
+# IDS
+#   Every node has an opaque id `<kind-prefix>-<seq>` (e.g. buc-003, auc-017, rule-042).
+#   Ids are allocated from the `sequences` table in index.yaml, per prefix, and never reused.
+#   `name` is the display name: free to change, may repeat across kinds. All references use ids.
+#   Humans and AIs address nodes by id OR by `<kind>:<name>` (must be unique within the kind).
+#
+#     organization org   business-worker bw   external-party ep   participant pt
+#     business-use-case buc   system sys   system-use-case suc
+#     application app   app-use-case auc   page pg   resource res
+#     entity ent   value-object vo   enum enum   role role   domain-service svc   domain-event evt
+#     rule rule
+#
+# PLACEMENT (containment — also the sidebar tree)
+#   top of `business`:      organization, business-worker, external-party, business-use-case, system, entity
+#   top of `applications`:  application
+#   external-party → participant        system → system-use-case
+#   application → app-use-case / page / resource / entity / value-object / enum / role / domain-service / domain-event
+#   entity → entity (aggregate members)   entity → value-object (aggregate-local VO)
+#   app-use-case / entity → rule (inline, under `rules:` in the owner's entry)
+#
+# PACKAGES
+#   Any kind list in index.yaml may contain `- package: <name>` wrappers holding a sub-list of
+#   the same kind; nest for multi-level packages. A package is grouping only (no id, no
+#   detail). A node's `package` attribute is derived from its position ("A/B").
+
+# =============================================================================
+# FILE: index.yaml
+# =============================================================================
+
+index_yaml_schema:
+
+  schema_version: "7.0"                     # REQUIRED
+  sequences:                                # next-id counters per prefix (tool-maintained)
+    buc: 3
+    auc: 85
+
+  business:                                 # view → kind → entries
+    organization:
+      - { id: org-001, name: string }
+    business-worker:
+      - { id: bw-001, name: string }
+    external-party:
+      - id: ep-001
+        name: string
+        participant:                        # nesting = has-participant
+          - { id: pt-001, name: string }
+    business-use-case:
+      - { id: buc-001, name: string }
+      - package: string                     # grouping wrapper (not a node)
+        business-use-case:
+          - { id: buc-002, name: string }
+    system:
+      - id: sys-001
+        name: string
+        system-use-case:                    # nesting = has-uc
+          - { id: suc-001, name: string }
+    entity:                                 # business entities (no application ancestor)
+      - { id: ent-001, name: string }
+
+  applications:
+    application:
+      - id: app-001
+        name: string
+        app-use-case:                       # nesting = has-uc; packages allowed, multi-level
+          - package: string
+            app-use-case:
+              - { id: auc-001, name: string }
+        page:
+          - { id: pg-001, name: string }
+        resource:                           # technical integration points owned by this app
+          - { id: res-001, name: string }
+        entity:                             # app-scoped entities; nesting under an entity = aggregates
+          - id: ent-020
+            name: string                    # aggregate root
+            entity:
+              - { id: ent-021, name: string }   # member
+            value-object:
+              - { id: vo-003, name: string }    # aggregate-local VO
+          - { id: ent-022, name: string }   # plain entity
+        value-object:
+          - { id: vo-001, name: string }
+        enum:
+          - { id: enum-001, name: string }
+        role:
+          - { id: role-001, name: string }
+        domain-service:
+          - { id: svc-001, name: string }
+        domain-event:
+          - { id: evt-001, name: string }
+
+# =============================================================================
+# DETAIL ENTRIES
+# =============================================================================
+#
+# A detail file is `<kind>: [entries]` (several kinds per file are fine). Every entry
+# starts with `id`; `name` is repeated for readability (index.yaml wins on conflict).
+# Only attrs listed for the kind are expected (`dcddp describe <kind>`); edges are the
+# fields marked (edge) and hold target ids.
+#
+# Field lists (`fields`, `payload`) use the compact single-key form:
+#   - fieldName: "Type, description"       # e.g. - id: "Long, auto-increment primary key"
+
+detail_entry_schemas:
+
+  # ---- business/actors.yaml ----
+  organization:
+    - id: org-001
+      name: string
+      summary: string
+      industry: string
+      provides: [buc-001]                   # (edge) provides → business-use-case
+  business-worker:
+    - id: bw-001
+      name: string
+      summary: string
+  external-party:
+    - id: ep-001
+      name: string
+      type: system | string                 # `system` when the party itself IS a system
+      summary: string
+  participant:
+    - id: pt-001
+      name: string
+      type: person | device | system
+      summary: string
+
+  # ---- business/business-use-cases.yaml ----
+  business-use-case:
+    - id: buc-001
+      name: string
+      summary: string
+      actor: bw-001 | ep-001 | pt-001       # (edge, required) has-actor
+      uses: [suc-001]                       # (edge) uses → system-use-case
+      stakeholder_interests:
+        - stakeholder: string
+          interest: string
+      docs: [{ name: string, type: image | article, path: string }]
+
+  # ---- business/systems.yaml ----
+  system:
+    - id: sys-001
+      name: string
+      summary: string
+  system-use-case:                          # thin glue layer — NO rules
+    - id: suc-001
+      name: string
+      summary: string
+      actor: bw-001 | ep-001 | pt-001 | app-001   # (edge) has-actor
+      entry: auc-001                        # (edge) has-entry → front-door app use case
+
+  # ---- business/entities.yaml  and  applications/<app>/domain.yaml ----
+  entity:                                   # business-scoped OR app-scoped (same shape)
+    - id: ent-001
+      name: string
+      archetype: moment-interval | role | party-place-thing | description   # business entities (NOTE 13)
+      table_name: string                    # app entities only
+      summary: string
+      fields:
+        - fieldName: "Type, description"
+      invariants: [string]                  # aggregate-level invariants (root entity)
+      methods: [string]
+      repository:                           # app entities: the repository managing this root
+        name: string
+        operations: [string]
+      notes: string
+      state_machine:
+        field: string
+        states: [string]
+        transitions:
+          - { from: string, to: string, trigger: string }   # (edge) transitions-to, state names
+        notes: string
+      relationships:                        # (edge) struct list, see NOTE 12
+        - kind: composition | associates | depends-on | implements | realizes
+          target: ent-009 | role-001        # target id
+          cardinality: one-to-one | one-to-many | many-to-one | many-to-many
+          via: string
+          note: string
+          bidirectional: boolean
+      uses:                                 # (edge) uses → resource (table / cache-key / file / bucket: read | write; topic / queue: publish | subscribe)
+        - { target: res-003, mode: write }
+        - { target: res-002, mode: publish }
+      emits: [evt-001]                      # (edge) emits → domain-event
+      handles: [evt-002]                    # (edge) handles → domain-event
+      rules:                                # inline rule nodes (has-rule)
+        - id: rule-001
+          content: string
+          field: string
+          related_use_cases: [auc-001]      # (edge) references → app-use-case
+      docs: [{ name: string, type: image | article, path: string }]
+
+  # ---- applications/applications.yaml ----
+  application:
+    - id: app-001
+      name: string                          # kebab-case
+      type: frontend | client | backend | proxy | external
+      summary: string
+      tech_stack:
+        language: string
+        frameworks: [string]
+        storage: string
+        middleware: [string]
+        implementation: string
+      infrastructure:
+        - { name: string, type: string, description: string }
+      repositories:                         # repositories not tied to one root entity
+        - { name: string, operations: [string] }
+      docs: [{ name: string, type: image | article, path: string }]
+  topology:                                 # application topology (NOTE 7) — not a node list
+    - from: string                          # application name or external actor/device
+      to: string
+      label: string
+      type: sync | call
+      details: [string]
+
+  # ---- applications/<app>/use-cases.yaml ----
+  app-use-case:
+    - id: auc-001
+      name: string
+      summary: string
+      actor: bw-001 | ep-001 | pt-001 | app-002    # (edge) has-actor
+      api: [string]                         # endpoints (lightweight text form; promote to a resource when shared)
+      exposes: [res-001]                    # (edge) exposes → resource of type api: this use case implements the endpoint
+      uses:                                 # (edge) uses → entity, with mode read | write
+        - { target: ent-020, mode: write }
+      includes: [auc-002]                   # (edge) includes → app-use-case (any application)
+      extends: [auc-003]                    # (edge) extends → app-use-case
+      rules:                                # inline rule nodes (has-rule)
+        - id: rule-010
+          content: string
+          related_entities: [ent-001]       # (edge) references → entity
+      docs: [{ name: string, type: image | article, path: string }]
+
+  # ---- applications/<app>/resources.yaml ----
+  resource:                                 # integration point owned by the application (SCHEMA NOTE 19)
+    - id: res-001
+      name: string                          # e.g. "POST /api/login", "session.events", "t_session"
+      type: api | topic | table | cache-key | queue | file | bucket
+      spec: string                          # path + method / key pattern / schema summary (markdown ok)
+      summary: string
+
+  # ---- applications/<app>/pages.yaml ----
+  page:
+    - id: pg-001
+      name: string
+      summary: string
+      related_use_cases: [auc-001]          # (edge) references → app-use-case
+      external_links: [{ label: string, url: string }]
+      display_mappings: [string]
+
+  # ---- applications/<app>/domain.yaml (besides entity) ----
+  value-object:
+    - id: vo-001
+      name: string
+      fields:
+        - fieldName: "Type, description"
+      summary: string
+  enum:
+    - id: enum-001
+      name: string
+      values: [string]
+      summary: string
+  role:                                     # interface / contract implemented by entities
+    - id: role-001
+      name: string
+      methods: [string]
+      summary: string
+  domain-service:
+    - id: svc-001
+      name: string
+      operations: [string]
+      summary: string
+      handles: [evt-001]                    # (edge) handles → domain-event
+  domain-event:
+    - id: evt-001
+      name: string
+      published_when: string
+      payload:
+        - fieldName: "Type, description"
+      summary: string
+
+# =============================================================================
+# FILE: deployment.yaml — Deployment View (unchanged since 6.x; not graph nodes yet)
+# =============================================================================
+#
+# Physical/logical deployment: nodes, network topology, configuration.
+# Schema is preliminary — refine as deployment cases accumulate.
+
+deployment_yaml_schema:
+
+  nodes:
+    - name: string
+      type: vm | container | service
+      location: string
+      hosts: [string]                       # application names hosted here
+
+  network:
+    - { from: string, to: string, port: integer, protocol: tcp | udp | http | https }
+
+  config:
+    - application: string
+      env: [string]
+      secrets: [string]
+
+  diagram: string                           # optional, path to SVG
+
+# =============================================================================
+# SCHEMA NOTES
+# =============================================================================
+
+# 1. IDENTITY AND REFERENCES
+#
+#    Nodes are identified by opaque ids (`<prefix>-<seq>`, see IDS above). Names are
+#    display text and may repeat; the tools resolve `<kind>:<name>` only when unique.
+#    Every reference in a detail entry (actor, uses, entry, includes, relationships.target,
+#    related_*, emits, handles) holds a target ID — never a name, never a path.
+#    Renaming therefore touches exactly one place (index.yaml + the entry's own `name`).
+#
+#    Tool responsibility: `dcddp validate` reports ids missing from the index, duplicate
+#    ids, dangling references, and counters that lag behind ids in use.
+
+# 2. THREE-LAYER USE CASE STRUCTURE
+#
+#    Business use cases    → business/business-use-cases.yaml   → value propositions
+#    System use cases      → business/systems.yaml              → thin glue, NO rules, has entry
+#    Application use cases → applications/<app>/use-cases.yaml  → implementation, rules, includes/extends
+#
+#    Traceability: page → app use case → system use case → business use case.
+#    Pages do NOT directly reference business use cases.
+#    `entry` only points to the front-door app use case; downstream is inferred from Include chain.
+
+# 3. FIELD FORMAT (entity files)
+#
+#    Fields use the compact "name: Type, description" format:
+#      - id: "Long, auto-increment primary key"
+#      - status: "PackageStatus(Pending/Active/Expired/Exhausted), package state"
+#
+#    This keeps detail files readable while providing enough info for AI to
+#    generate correct code.
+
+# 4. STATE MACHINES
+#
+#    Defined inline in the entity detail file, co-located with the entity.
+#    Only entities with status/lifecycle fields need a state_machine block.
+
+# 5. NATURAL LANGUAGE RULES
+#
+#    Rules are free-form natural language. They serve as CONSTRAINTS on AI
+#    behavior, not executable specifications. Rules are inline nodes (own id, prefix
+#    `rule`) living inside their owner's entry under `rules:`, in two places:
+#      - Entity rules (business/entities.yaml or applications/<app>/domain.yaml)
+#      - Application use case rules (applications/<app>/use-cases.yaml)
+#
+#    Both support cross-references (by id) for bidirectional traceability:
+#      - Entity rule.related_use_cases → app use case
+#      - App use case rule.related_entities → entity (mention the field in `content`)
+#
+#    Rules are never duplicated — they live in one place and link to the other.
+
+# 6. RELATIONSHIPS vs FIELD-LEVEL REFERENCES
+#
+#    Field-level references (e.g., "userId: Long, references User") give the
+#    implementation hint. The entity's `relationships` list gives the big-picture
+#    overview. Use the explicit relationships entry for cardinality,
+#    lifecycle coupling, or non-obvious associations.
+
+# 7. APPLICATION TOPOLOGY (was system.overview)
+#
+#    A high-level semantic view of inter-application interactions. Manually
+#    authored (cannot be derived from use case associations alone).
+#      - Arrow direction = SEMANTIC FLOW (data/value), not technical call direction.
+#        Example: if proxy polls manager-server for user data, arrow is
+#        "manager-server → proxy: Provide User Data".
+#      - type: sync (async sync, polling, push, MQ) vs call (real-time RPC/REST).
+#      - A pair of apps can have multiple edges with different directions/types.
+#      - External actors and devices can appear as endpoints alongside applications.
+
+# 8. DIAGRAMS (SVG)
+#
+#    Diagrams are SVG files placed in the corresponding view's details directory
+#    and referenced via the `diagram` field. SVG is preferred over mermaid for
+#    flexibility (AI-generated, viewer-renderable, designer-editable).
+#
+#    CRITICAL: SVG must NOT carry information beyond what is in the YAML. It is
+#    a visualization, not a parallel source of truth. Theoretically the SVG
+#    should be regenerable from the YAML.
+
+# 9. USE CASE PACKAGE GROUPING
+#
+#    Packages are `- package:` wrappers in index.yaml (see PACKAGES above). They may
+#    nest (multi-level) and apply to any kind list, not only use cases. Studio renders
+#    them as folders in the sidebar and as compound boundaries in use-case diagrams.
+#    A node's `package` attribute is read-only (derived from index position); change it
+#    with `dcddp update-node <kind> <id> --set package=A/B` (moves the index entry).
+
+# 10. WHAT'S INTENTIONALLY LEFT OUT (HOW concerns)
+#
+#    - Database DDL, indexes, migration scripts (AI derives from entities + tech stack)
+#    - UI component hierarchy, CSS (AI derives from pages + display_mappings)
+#    - Authentication token formats, session internals (AI derives from rules)
+#    - Internal class/package structure (AI's freedom)
+#    - Logging, monitoring (modeled in deployment view if cross-cutting)
+
+# 11. APPLICATION TYPE — frontend vs client
+#
+#    Both are user-facing, but differ in how much logic they own:
+#      - frontend: thin UI dispatching to backend (browser SPA, mobile shell whose
+#        meaningful work happens on backend). Has `pages`, no `api`, no
+#        `infrastructure`.
+#      - client: "thick" client with embedded server-like work (media routing /
+#        codec / signaling / local services / P2P). Often runs as desktop /
+#        mobile / agent. May have `pages` (UI), `api` (exposed endpoints),
+#        `infrastructure` (embedded stack). Use when the client meaningfully
+#        runs without the backend or contains its own daemons.
+#
+#    The cut: if removing the backend leaves the user with anything useful, it's
+#    a client. If removing the backend leaves the user with nothing, it's a
+#    frontend.
+
+# 12. RELATIONSHIPS — 统一关系模型（业务模型与应用领域模型共用）
+#
+#    每个构造块（business entity / aggregate / VO / repository / service / event / role）
+#    都可有可选的 `relationships:` 段，列出本构造块**出向**的关系。每条关系：
+#
+#      - kind: depends-on | implements | associates | composition | realizes
+#      - target: <id>                         目标节点 id（entity 或 role）；id 自带 kind，不再需要 target_kind
+#      - bidirectional: true                  optional, 仅 associates 可设；表"双向引用"
+#      - cardinality: one-to-one | one-to-many | many-to-one | many-to-many
+#                                             optional, 一般用于 associates / composition
+#      - via: <field name>                    optional, 持有引用的字段
+#      - note: <string>                       optional
+#
+#    四种 kind 的语义：
+#
+#      depends-on（依赖）：A 临时用 B 完成工作，不持有 B 的引用。
+#        例：DomainService 依赖 Repository（调用其方法即用即弃）；
+#            Service 依赖另一个 Service。
+#        视觉：虚线 + 普通箭头。
+#
+#      implements（实现）：A 实现 B 的契约（接口 / Role）；A 必须满足 B 的方法签名。
+#        例：Account implements PackageActivationTarget（应用层 Role）。
+#        视觉：虚线 + UML 空心三角箭头（realization）。
+#
+#      realizes（跨层实现）：应用层实体实现某个业务实体（entity → entity，跨视图）。
+#        例：manager-server 的 Account realizes 业务实体 Account。6.x 里写作
+#        `implements` + `target_kind: business-entity`，7.0 起是独立 kind。
+#        视觉：同 implements，跨视图跳转。
+#
+#      associates（关联）：A 持有 B 的引用（字段、ID 引用）；可单向或双向。
+#        例：Order associates Customer（订单关联下单用户，单向）；
+#            Peer associates DirectLink（peer 引用其直连配置）。
+#        视觉：实线 + 普通箭头；bidirectional=true 时双端无箭头。
+#
+#      composition（聚合 / 强所有权）：A 拥有 B；B 的生命周期依附于 A——A 删除则 B 消失。
+#        实现上常表现为值类型 / 嵌入式 struct / 内联 JSON，B 没有独立 ID 或存储表。
+#        例：DirectLink composition ProxyConfig（代理配置嵌入直连配置）；
+#            Repository composition Aggregate（仓储管理聚合的生命周期）。
+#        视觉：实线 + UML 实心菱形（在源端）。
+#
+#    存储约定：
+#      - 所有关系记在主动方（源实体）的 `relationships[]`，target 为目标 id
+#      - 双向关联（associates with bidirectional=true）：记一边即可，viewer 推导另一边
+#      - 单向关联（associates）：记在持有引用的一方
+#      - 聚合（root → member）不走 relationships：成员实体嵌套在 index.yaml 的根实体下（NOTE 17）
+#
+#    Viewer 责任：
+#      - 加载所有构造块后，建立"出向 + 入向"的双向索引
+#      - 渲染时按 kind 用不同样式
+#      - detail 页面同时展示主动出向关系和被动入向关系（"被谁依赖 / 被谁实现 / 被谁关联"）
+
+# 13. ENTITY ARCHETYPE — 四色建模（Peter Coad）
+#
+#    可选字段 `archetype`（写在 entity detail yaml 顶层），为实体打一个原型标签：
+#
+#      - moment-interval（粉色）：时刻 / 时段类，"什么发生了"。本质是事件、过程、交易、会话；
+#        有时间属性（at / start-end），常承载业务流程的关键状态机。
+#        例：Order, Payment, MediaFrame, ConnectionSession, MeetingInstance
+#
+#      - role（黄色）：参与角色，"在某情境下扮演什么"。把 PPT 接入 MI；本身不"独立存在"，
+#        总是依附于一个 PPT 在某 MI 中的角色。
+#        例：Customer, Teacher, ConferenceHost, RelayClient
+#
+#      - party-place-thing（绿色，简称 PPT）：参与方 / 地点 / 物，"持续存在的人物地物"。
+#        身份独立、生命周期长。
+#        例：Person, Node, Company, Vehicle, Building, Device
+#
+#      - description（蓝色）：描述 / 规范 / 分类，"可复用的属性集 / 配置 / 模板"。
+#        多个实例共享一份描述；常以"什么类型 / 什么级别 / 什么模板"出现。
+#        例：ProductType, ProxyConfig, RelayServerConfig, PackageTemplate, ChannelSpec
+#
+#    判断顺口溜（按优先级）：
+#      1) 有时间发生 → MI（粉）
+#      2) "X as Y in Z" 表达（X 是个角色，配合 PPT 与 MI）→ Role（黄）
+#      3) 长期存在的具体存在 → PPT（绿）
+#      4) 共享的属性集 / 配置规格 → Description（蓝）
+#
+#    Viewer：按 archetype 上色（粉 / 黄 / 绿 / 蓝）。无 archetype 字段则用中性灰，不强制。
+
+# 14. MARKDOWN IN TEXT FIELDS
+#
+#    若干文本字段（rule.content, entity notes, summary, application_topology.label 等）
+#    支持 markdown 渲染（viewer 内联呈现，链接可点击）。
+#
+#    **相对链接的路径约定**：相对路径以**包含该 markdown 文本的 YAML 文件所在目录**为基准。
+#    例如在 `applications/vchat-client.yaml` 的 rule.content 中写
+#    `[流程图](./vchat-client/flow.svg)`
+#    会被 viewer 解析为 `<model-root>/applications/vchat-client/flow.svg`（即把 svg 放在
+#    与 yaml 同级的 `vchat-client/` 子目录里）。
+#
+#    Viewer 实现：loadModel 在加载 detail YAML 时记录其 `_sourceDir`（注入到该实体/应用对象上），
+#    渲染 markdown 时用 _sourceDir 作为相对链接前缀。
+#
+#    支持的 markdown 元素：链接 `[label](url)`、行内代码 `` `code` ``、加粗 `**bold**`、
+#    斜体 `*italic*`、列表（`- item` / `1. item`）。块级 markdown（多段落）会被压成单段，
+#    所以适合短文本，不适合长 markdown 文档（长文档建议放独立 .md 文件用链接引用）。
+
+# 15. BUSINESS MODEL vs APPLICATION DOMAIN MODEL
+#
+#    DCDDP 区分两层模型，受众与建模工具不同：
+#
+#    业务模型（index.yaml business.entity + business/entities.yaml）：
+#      - 内容：业务概念在"世界里"长什么样（Account, Order, Peer, MediaFrame ...）
+#      - 受众：PO / 业务方 / 跨工程对齐
+#      - 建模工具：四色建模（archetype: MI / Role / PPT / Description）
+#      - 位置：业务视图下；跨 app 共用
+#      - 不写代码层细节：no table_name, no aggregate boundary, no repository
+#
+#    应用领域模型（index.yaml 里挂在 application 下的 entity / value-object / … + applications/<app>/domain.yaml）：
+#      - 内容：本 app 的代码层结构如何实现业务概念（每个 app 一份）
+#      - 受众：该 app 的开发者
+#      - 建模工具：DDD 构造块
+#        * Aggregate（聚合）— 根实体 + 内含实体 + VO + 事务边界 + 不变量
+#        * Value Object（值对象）— 不可变，按值相等
+#        * Repository（仓储）— 对聚合的集合抽象
+#        * Domain Service（领域服务）— 不属单一聚合的领域逻辑
+#        * Domain Event（领域事件）— 业务上有意义的状态变化通知
+#      - 位置：应用视图下，挂在每个 app 上
+#      - 同一业务实体在不同 app 可有不同实现：
+#        * vchat-relay 的 Peer = 简单路由表项；
+#        * vchat-client 的 Peer = 富 Aggregate（含 RouteState VO + 看门狗 Service）
+#      - 也可以"不实现"——某 app 根本用不到某业务实体就不出现
+#
+#    跨层映射：应用层实体用 `relationships: [{kind: realizes, target: <业务实体 id>}]` 表达
+#    "本 app 在应用层实现了某业务实体"——让 viewer 可跨视图跳转、让 AI 推理时能关联两层。
+#
+#    重要约束：业务实体**不属于**本 app 的领域模型层——
+#      - 业务实体不能嵌套在 application 下（它们在 business 视图顶层）
+#      - 业务实体不画进应用领域模型图，只在实体 / role 详情面板里以"实现的业务实体"形式展示
+#
+#    判断准则：
+#      - 写一段东西在业务模型 vs 应用领域模型？看受众。给业务方/跨工程读 → 业务模型；给本 app 开发者
+#        理解代码结构 → 应用领域模型。
+#      - 概念名相同、但语义不同？两边都写，用 implements 关系连接。
+
+# 17. AGGREGATES — THE ROOT ENTITY IS THE AGGREGATE
+#
+#    There is no aggregate wrapper node. An aggregate is expressed by nesting member
+#    entities (and aggregate-local value objects) under the ROOT entity in index.yaml:
+#
+#      applications:
+#        application:
+#          - id: app-001
+#            name: manager-server
+#            entity:
+#              - id: ent-020
+#                name: Account                     # aggregate root — a normal entity
+#                entity:
+#                  - { id: ent-021, name: Package }   # member  (= Account aggregates Package)
+#                value-object:
+#                  - { id: vo-003, name: Money }      # aggregate-local VO
+#
+#    Aggregate-level invariants and the repository live on the root entity's detail entry
+#    (`invariants`, `repository`). Cross-layer mapping is `relationships: [{kind: realizes,
+#    target: <business entity id>}]` on the root (or on any app entity).
+#
+#    A member nests under exactly one root. Nesting under another entity's member is not
+#    allowed (aggregates do not nest).
+#
+#    Viewer responsibility:
+#      - sidebar shows the root with members indented beneath it, no "◆ XAggregate" layer;
+#      - the entity page shows "aggregate members" / "repository" sections when present;
+#      - the application domain diagram draws the root node and encloses members.
+
+# 18. ENTITY vs AGGREGATE — 何时嵌套
+#
+#    应用领域模型里一个领域对象就是一个 entity。只有当它**有内含实体 / 有内含 VO / 有聚合级
+#    不变量**时，它才"是"一个聚合根——做法是把成员嵌套在它下面（NOTE 17），不是换一种 kind。
+#    单实体、无内含成员的对象保持扁平；一旦生长出成员或不变量，把成员移到它下面即可
+#    （`dcddp update-node entity <member> --set parent=<root>`）。
+#
+#    6.x 里 `domain_model.aggregates[]` 的包装块（`AccountAggregate` 包 `Account`）在 7.0 中
+#    由迁移折叠进根实体：包装块的名字丢弃，成员与 VO 变为嵌套，invariants 落到根实体。
+
+# 19. RESOURCES — 技术资源 / 集成点
+#
+#    API 端点、消息 topic、共享表、缓存 key 这类东西会被多个用例（常常跨应用）同时指向，
+#    按"引用必须是节点"的原则建成 `resource` 节点，挂在拥有它的应用下，用 `type` 区分
+#    （api / topic / table / cache-key / queue / file / bucket）。一类资源不开一个 kind。
+#
+#    三条边把它们接进模型，数据路径是 用例 → 实体 → 存储 / 消息，接口只挂在用例上：
+#      app-use-case  exposes  resource(api)        用例实现这个端点。调用方不连 API——web 用例调 server
+#                                                  用例在方法论里本来就是跨应用 include，API 只是技术外壳
+#      app-use-case  uses     entity   mode: read | write
+#      entity        uses     resource mode: read | write（table / cache-key / file / bucket）
+#                                      mode: publish | subscribe（topic / queue）
+#    同步 / 异步由 mode 决定，不另设标志：publish / subscribe 对应拓扑边 type: sync。
+#
+#    `app-use-case.api`（字符串列表）保留为轻量写法；端点被别的应用调用时升格成 resource。
+#    实体的 `table_name` 保持为属性，不与 table 类资源建边。
+#
+#    Viewer：应用下多一组"资源"；用例页"接口"与"使用的实体"分区；实体页"使用的资源"与
+#    "被哪些用例使用"；资源页按类型显示"由哪些用例实现"或"被哪些实体使用"。
+
+# 16. EXTENSIBILITY
+#
+#    Future sections (each as their own view file at the top level):
+#    - security.yaml: cross-cutting auth/authz
+#    - constraints.yaml: code generation rules
+#    - events.yaml: event-driven architectures
+#    - workflows.yaml: multi-step business processes

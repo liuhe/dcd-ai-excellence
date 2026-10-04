@@ -1,0 +1,43 @@
+name: auth-proxy
+type: proxy
+tech_stack:
+  language: Go
+  implementation: Custom HTTP proxy with Basic Auth extraction
+
+use_cases:
+  - name: AuthenticateAndForward
+    actor: Switch Console
+    rules:
+      - content: >-
+          Intercept incoming HTTP CONNECT/GET requests from Switch Console.
+          Extract username and password from HTTP Basic Auth header (Proxy-Authorization).
+        related_entities: [Account.username, Account.password]
+      - content: >-
+          Validate credentials against the LOCAL IN-MEMORY account table (populated
+          via SyncAccountData at startup and refreshed every 30s). No real-time call
+          to manager-server on the request path. If invalid, return HTTP 407.
+      - content: >-
+          Check the local package data: is there an active, non-expired, non-exhausted
+          package? If not, reject with 407.
+        related_entities: [Package.status, Package.expiresAt, Package.usedBytes, Package.quotaBytes]
+      - content: >-
+          If valid, forward the request to Squid (upstream proxy) for actual proxying.
+      - content: >-
+          After the response is returned, calculate bytes transferred and increment
+          usedBytes in the local in-memory copy. Buffer usage records and report to
+          manager-server.ReportUsage in batches (every 30 seconds or every 100 records).
+        related_entities: [UsageLog.bytesTransferred, Package.usedBytes]
+      - content: >-
+          If manager-server is unreachable, auth-proxy continues operating normally
+          using cached data. Usage records are buffered locally and flushed when
+          manager-server becomes available again.
+    associations:
+      - relation: Include
+        application: manager-server
+        name: SyncAccountData
+      - relation: Include
+        application: manager-server
+        name: ReportUsage
+      - relation: Include
+        application: squid
+        name: ForwardRequest

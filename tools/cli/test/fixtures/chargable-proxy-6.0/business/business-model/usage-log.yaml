@@ -1,0 +1,29 @@
+name: UsageLog
+fields:
+  - name: id
+    type: Long
+    desc: auto-increment primary key
+  - name: accountId
+    type: Long
+    desc: references Account
+  - name: packageId
+    type: Long
+    desc: references Package
+  - name: bytesTransferred
+    type: Long
+    desc: bytes transferred in this request
+  - name: requestHost
+    type: String
+    desc: target host of the proxied request
+  - name: loggedAt
+    type: LocalDateTime
+    desc: timestamp
+summary: >
+  Records individual proxy request traffic for auditing and analytics. The auth-proxy reports usage
+  in batches to manager-server for efficiency.
+relationships:
+  - kind: associates
+    target: Package
+    target_kind: business-entity
+    cardinality: many-to-one
+    via: packageId

@@ -1,0 +1,75 @@
+# Applications — Overview
+# Detail per application: ./applications/<app>.yaml
+# Topology diagram: ./applications/application-topology.svg (TODO: generate)
+
+applications:
+  - name: manager-server
+    type: backend
+    tech_stack:
+      language: Java
+      frameworks: [Spring Boot, Spring Data JPA]
+      storage: MySQL
+    summary: Backend API for all management operations.
+    detail: ./applications/manager-server.yaml
+  - name: manager-ui
+    type: frontend
+    tech_stack:
+      language: TypeScript
+      frameworks: [React]
+    summary: Frontend for admin and player self-service.
+    detail: ./applications/manager-ui.yaml
+  - name: auth-proxy
+    type: proxy
+    tech_stack:
+      language: Go
+    summary: Authentication layer in front of Squid; validates credentials and reports usage.
+    detail: ./applications/auth-proxy.yaml
+  - name: squid
+    type: external
+    tech_stack:
+      implementation: Squid HTTP proxy
+    summary: Upstream HTTP proxy on overseas cloud (Tokyo/Hong Kong); not our code.
+    detail: ./applications/squid.yaml
+
+application_topology:
+  - from: Switch Console
+    to: auth-proxy
+    label: HTTP proxy request (with Basic Auth)
+    type: call
+    details:
+      - AuthenticateAndForward
+  - from: auth-proxy
+    to: squid
+    label: Forward validated request
+    type: call
+  - from: manager-server
+    to: auth-proxy
+    label: Sync account & package data (auth-proxy polls on startup + periodically)
+    type: sync
+    details:
+      - SyncAccountData
+  - from: auth-proxy
+    to: manager-server
+    label: Report usage in batches
+    type: sync
+    details:
+      - ReportUsage
+  - from: manager-ui
+    to: manager-server
+    label: Admin & player self-service API
+    type: call
+  - from: Taobao E-Commerce Platform
+    to: manager-server
+    label: TMC trade notifications (payment, refund)
+    type: call
+    details:
+      - ReceiveTradeNotification
+      - HandleRefund
+  - from: manager-server
+    to: Taobao E-Commerce Platform
+    label: Query order details & confirm delivery
+    type: call
+    details:
+      - AutoFulfillOrder
+
+diagram: ./applications/application-topology.svg

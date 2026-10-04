@@ -1,0 +1,33 @@
+page:
+  - id: pg-001
+    name: AdminDashboard
+    display_mappings:
+      - Show account list with status, creation date, and bound packages
+      - Show batch creation form with count input and CSV export button
+      - Show redemption code generation form with batch size, quota, and validity inputs
+    related_use_cases:
+      - auc-013
+      - auc-014
+      - auc-015
+  - id: pg-002
+    name: SkuMappingConfigPage
+    display_mappings:
+      - Show table of SKU-to-package mappings (skuId, skuName, quotaBytes, validityDays, active)
+      - Inline editing for adding/updating/disabling mappings
+    related_use_cases:
+      - auc-016
+  - id: pg-003
+    name: TaobaoOrdersPage
+    display_mappings:
+      - Show list of Taobao orders with status, buyer, SKU, linked account, timestamps
+      - Filter by status (Received/Fulfilled/DeliveryFailed/Refunded)
+      - Manual retry button for DeliveryFailed orders
+      - Show alert banner for orders that exceeded retry limit
+  - id: pg-004
+    name: AccountDetailPage
+    display_mappings:
+      - Show account info (username, status, created date)
+      - Show packages as cards with progress bar (usedBytes / quotaBytes) and status badge
+      - Show redemption code input field for self-service activation
+    related_use_cases:
+      - auc-017

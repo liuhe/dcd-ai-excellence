@@ -1,0 +1,43 @@
+name: TaobaoSku
+fields:
+  - name: id
+    type: Long
+    desc: auto-increment primary key
+  - name: skuId
+    type: String
+    desc: unique, Taobao SKU ID
+  - name: skuName
+    type: String
+    desc: human-readable SKU label shown on Taobao (e.g., 'DLC拓展3 高速版')
+  - name: packageTemplateId
+    type: Long
+    desc: references PackageTemplate
+  - name: fulfillmentType
+    type: FulfillmentType(NewAccount/RedemptionOnly)
+    desc: determines what to create on fulfillment
+  - name: active
+    type: Boolean
+    desc: whether this SKU mapping is active, default true
+summary: >
+  Maps a Taobao shop SKU to a PackageTemplate and fulfillment behavior. Each Taobao SKU is a
+  combination of two dimensions (5 × 2 = 10 SKUs per product): (1) traffic tier (游戏版本) → quotaBytes
+  + validityDays in the template (2) speed tier (语种分类) → proxyTierId in the template:
+      英语=高速版(hs, ~30Mbps), 简体中文=极速版(xs, ~200Mbps)
+  fulfillmentType determines what AutoFulfillOrder creates: - NewAccount: create Account + Package +
+  RedemptionCode (【新账号】product) - RedemptionOnly: create only a RedemptionCode (【流量包】product, buyer
+  redeems it for their existing account)
+rules:
+  - content: Each Taobao SKU ID must map to exactly one PackageTemplate
+    field: skuId
+  - content: >-
+      Admin must configure SKU mappings before auto-fulfillment can work; orders with unmapped SKUs
+      are flagged as DeliveryFailed
+    related_use_cases:
+      - manager-server.AutoFulfillOrder
+relationships:
+  - kind: associates
+    target: PackageTemplate
+    target_kind: business-entity
+    cardinality: many-to-one
+    via: packageTemplateId
+    note: Resolves Taobao SKU to the package specification to create

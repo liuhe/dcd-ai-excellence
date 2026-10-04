@@ -1,0 +1,62 @@
+# Business View — Overview
+# Source: chargable-proxy-redesign.yaml (business section)
+
+schema_version: '6.0'
+business_workers:
+  - name: Admin
+external_parties:
+  - name: Switch Game Players
+    participants:
+      - name: Player
+        type: person
+      - name: Switch Console
+        type: device
+  - name: Taobao E-Commerce Platform
+    type: system
+systems: []
+business_use_cases:
+  - name: Accelerate Game Downloads
+    actor: Player
+    system_use_cases:
+      - Proxy HTTP Request
+      - Query Account
+    stakeholder_interests:
+      - stakeholder: Player
+        interest: Download Nintendo Switch games at significantly faster speeds
+      - stakeholder: Admin
+        interest: Provide reliable proxy service, generate revenue
+  - name: Activate Service
+    actor: Player
+    system_use_cases:
+      - Redeem Code
+      - Query Account
+    stakeholder_interests:
+      - stakeholder: Player
+        interest: Quickly activate purchased traffic package using redemption code
+  - name: Operate Proxy Service
+    actor: Admin
+    system_use_cases:
+      - Create Accounts
+      - Create Packages
+      - Generate Redemption Codes
+      - Configure SKU Mapping
+    stakeholder_interests:
+      - stakeholder: Admin
+        interest: Efficiently manage accounts, packages, codes, and Taobao SKU mappings
+  - name: Sell via Taobao (Auto-Fulfillment)
+    actor: Taobao E-Commerce Platform
+    system_use_cases:
+      - Receive Trade Notification
+      - Auto Fulfill Order
+      - Handle Refund
+      - Sync Unprocessed Orders
+    stakeholder_interests:
+      - stakeholder: Player
+        interest: Receive proxy credentials immediately after payment, no manual steps
+      - stakeholder: Admin
+        interest: Zero manual intervention for sales; fully automated provisioning and delivery
+  - name: bu1
+organizations:
+  - name: Chargable Proxy Service
+    provided_use_cases:
+      - bu1

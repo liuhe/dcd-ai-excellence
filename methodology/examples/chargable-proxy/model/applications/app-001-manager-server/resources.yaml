@@ -1,0 +1,8 @@
+{
+  resource:
+    [
+      { id: res-001, name: POST /api/accounts/batch, type: api, spec: "批量创建账号；body: {count, packageTemplateId}" },
+      { id: res-002, name: taobao.trade.notify, type: topic, spec: 淘宝交易通知；key = tid },
+      { id: res-003, name: taobao_order, type: table, spec: 淘宝订单表 }
+    ]
+}
