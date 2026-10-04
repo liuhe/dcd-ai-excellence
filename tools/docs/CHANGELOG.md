@@ -30,7 +30,7 @@ v7 之前（v1..v6.2 方法论迭代）的历史，见 `v6/v6.2/` 及其祖先�
 ### 2026-10-04 追加：resource（技术资源 / 集成点）
 
 - 新 node-kind `resource`（前缀 res，挂在 application 下；attrs：type / spec / summary；type 封闭取值 api / topic / table / cache-key / queue / file / bucket）
-- 第三个视图 **deployment**：index.yaml `deployment:` 段 + `deployment/` 细节目录。两个 kind：`data-source`（业务数据：mysql / redis / kafka / hive / s3 / …，`endpoint`）与 `observability-store`（指标 / 日志 / 链路：prometheus / loki / tempo / …，`grafana_url`、`grafana_datasource_uid`）；两条 rel：资源 `stored-in` 数据源、指标 `sourced-from` 可观测性存储（都存 `store`）。studio 侧边栏“部署视图”（有节点才出现）、两类节点页、资源页“存放于”、指标与用例 / 实体页上的 Grafana Explore 深链（存储的 `ext.grafana_datasource_uid-<后缀>` 每个键再多一条链接）
+- 第三个视图 **deployment**：index.yaml `deployment:` 段 + `deployment/` 细节目录。两个 kind：`data-source`（业务数据：mysql / redis / kafka / hive / cassandra / s3 / …，`endpoint`）与 `observability-store`（指标 / 日志 / 链路：prometheus / loki / tempo / …，`grafana_url`、`grafana_datasource_uid`）；两条 rel：资源 `stored-in` 数据源、指标 `sourced-from` 可观测性存储（都存 `store`）。studio 侧边栏“部署视图”（有节点才出现）、两类节点页、资源页“存放于”、指标与用例 / 实体页上的 Grafana Explore 深链（存储的 `ext.grafana_datasource_uid-<后缀>` 每个键再多一条链接）
 - 新 kind `solution`（应用视图根，`applications/solutions.yaml`）与 rel `covers`（方案 → 任意应用的用例 / 实体）：按关注点切分应用层，如某实体的生命周期处理；studio 侧边栏“方案”组、方案页画按应用分簇的用例图和实体关系图
 - 注入段：模型文件只由 CLI 写入，禁止手写；动手前先 `validate` 并读 `migration-report.md`；CLI 不可用时停下来让用户配置，不退回手写；行为指引新增“补一块模型”“dropped references”两行
 - 新 kind `metric`（name + `expression`，数据来源等放 `ext`；业务指标在业务视图根，技术指标挂应用下）与 rel `measures`（指标 → 任一层用例 / 实体）；studio 侧边栏“指标”组、指标页、用例 / 实体页“监控指标”分区

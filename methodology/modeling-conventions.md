@@ -457,7 +457,7 @@ dcddp connect solution:订单履约 --rel covers --to entity:order-service/Order
 
 | kind | 装什么 | type | 谁指向它 |
 |---|---|---|---|
-| `data-source` | 业务数据：mysql / postgres / redis / kafka / rabbitmq / mongodb / elasticsearch / clickhouse / hive / s3 / oss | 封闭集，`endpoint` 自由文本 | 资源 `stored-in`：表在哪个 MySQL、缓存 key 在哪个 Redis、topic 在哪个 Kafka |
+| `data-source` | 业务数据：mysql / postgres / redis / kafka / rabbitmq / mongodb / elasticsearch / clickhouse / hive / cassandra / s3 / oss | 封闭集，`endpoint` 自由文本 | 资源 `stored-in`：表在哪个 MySQL、缓存 key 在哪个 Redis、topic 在哪个 Kafka |
 | `observability-store` | 指标 / 日志 / 链路：prometheus / loki / elasticsearch / clickhouse / tempo / mysql / postgres | 封闭集，另有 `grafana_url`、`grafana_datasource_uid` | 指标 `sourced-from` |
 
 分成两个 kind 是因为角色不同：存订单的 MySQL 和存延迟序列的 Prometheus 在模型里回答的是两个问题，哪怕同一个产品（ClickHouse、Elasticsearch）两边都能用。
