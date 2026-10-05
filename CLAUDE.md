@@ -56,6 +56,14 @@ dcd-ai-excellence/
 - **元模型**：3 视图（业务/应用/部署）、三层用例、业务模型 vs 应用领域模型
 - **存储（schema 7.0）**：`index.yaml` 是唯一的存在性来源（id + name，嵌套即归属，package 即分组）；`business/`、`applications/<app-id>-<name>/` 下的细节文件是平铺的 `<kind>: [条目]`，文件边界无语义；非归属边存在源节点条目里，值是目标 id。详见 `tools/docs/STORAGE.md`
 - **Schema 版本**：当前 `"7.0"`，版本常量在 `tools/core/src/version.ts`，迁移注册表在 `tools/core/src/migrations/`（6.0 → 7.0 真实迁移，写 migration-report.md）
+- **专属端口块 `4730-4733`**：本工程的服务固定用这一段冷门端口，避免与其他工程撞口。改端口要同步改本表、`vite.config.ts`、server 的默认值、`package.json` 的 `dev:client`、CLI `studio --port` 默认值：
+
+  | 服务 | 端口 | 说明 |
+  |---|---|---|
+  | kg-web Vite（打开它） | 4730 | 代理 `/api` → 4731 |
+  | kg-web Express API | 4731 | 默认值，可用 `PORT` 覆盖 |
+  | studio Vite（dev 打开它） | 4732 | 代理 `/api` → 4733 |
+  | studio Express API | 4733 | `dcddp studio` 单模型模式直接开它；默认值，可用 `STUDIO_PORT` 或 `--port` 覆盖 |
 
 ## 开发命令
 
@@ -66,10 +74,10 @@ node apply/bin/dcddp get entity ent-001 -m methodology/examples/food-delivery/mo
 node apply/bin/dcddp validate -m methodology/examples/food-delivery/model
 
 # kg-web（可视化编辑器，含 API server）
-cd tools/kg-web && npm run dev        # http://localhost:5173 + LAN
+cd tools/kg-web && npm run dev        # http://localhost:4730 + LAN（API :4731）
 
 # studio（浏览 + 就地编辑）
-cd tools/studio && npm run dev                        # vite :5174 + API :5175，读 projects.local.json
+cd tools/studio && npm run dev                        # vite :4732 + API :4733，读 projects.local.json
 node apply/bin/dcddp studio -m <model>                # 单模型服务模式（受管工程用这条）
 node apply/bin/dcddp studio -m <model> --export <dir> # 只读静态导出
 

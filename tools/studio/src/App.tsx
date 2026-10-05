@@ -72,6 +72,9 @@ function App() {
     }).catch(e => setLoadError(String(e)))
   }, [load])
 
+  // Browser tab title: product name, plus the current model when one is open.
+  useEffect(() => { document.title = project ? `${project} — DCDDP Studio` : 'DCDDP Studio' }, [project])
+
   const tree = useMemo(() => graph ? buildTree(graph) : null, [graph])
 
   if (!graph || !tree) {

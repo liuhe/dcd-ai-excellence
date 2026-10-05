@@ -1,16 +1,16 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
-// Dev: Vite serves the client on 5173, proxies /api → Express on 3000.
+// Dev: Vite serves the client on 4730, proxies /api → Express on 4731 (DCDDP block 4730-4733).
 // Prod: Express serves the built dist/client + /api.
 export default defineConfig({
   plugins: [react()],
   server: {
     host: true, // listen on all interfaces so mobile on LAN can hit the dev server too
-    port: 5173,
+    port: 4730,
     proxy: {
       '/api': {
-        target: 'http://localhost:3000',
+        target: 'http://localhost:4731',
         changeOrigin: true,
       },
     },

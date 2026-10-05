@@ -221,7 +221,7 @@ dcddp vt remove enum-001 --kind enum
 
 建一个空的 7.0 模型（index.yaml + 一个 organization）。
 
-### `dcddp studio -m <model> [--port 5175] [--host 0.0.0.0] [--name <显示名>]`
+### `dcddp studio -m <model> [--port 4733] [--host 0.0.0.0] [--name <显示名>]`
 
 启动 studio（API + 构建好的客户端，首次自动 `vite build`），单模型模式直接进入，局域网可访问。所有就地编辑经同一套 core 动词落到 YAML。
 

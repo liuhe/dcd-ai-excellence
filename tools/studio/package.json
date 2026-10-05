@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "concurrently -k -n vite,server -c cyan,magenta \"npm:dev:client\" \"npm:dev:server\"",
-    "dev:client": "vite --host --port 5174",
+    "dev:client": "vite --host --port 4732",
     "dev:server": "tsx watch server/index.ts",
     "build": "vite build && tsc -p tsconfig.server.json",
     "typecheck": "tsc -p tsconfig.app.json --noEmit && tsc -p tsconfig.server.json --noEmit",

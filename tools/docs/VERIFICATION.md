@@ -54,8 +54,8 @@ node apply/bin/dcddp validate -m /tmp/m6              # 只剩数据本身的问
 ## 5. 界面
 
 ```bash
-(cd tools/kg-web && npm run dev)       # http://localhost:5173；在设置里把 /tmp/v7 注册为工程，画布可增删节点与边
-(cd tools/studio && npm run dev)                          # vite :5174（代理 /api → :5175）；http://localhost:5174/?model=<工程名>#/business
+(cd tools/kg-web && npm run dev)       # http://localhost:4730；在设置里把 /tmp/v7 注册为工程，画布可增删节点与边
+(cd tools/studio && npm run dev)                          # vite :4732（代理 /api → :4733）；http://localhost:4732/?model=<工程名>#/business
 node apply/bin/dcddp studio -m /tmp/v7 --port 5190       # 单模型服务模式；节点页底部有属性 / 关系 / 子节点编辑卡
 node apply/bin/dcddp studio -m /tmp/v7 --export /tmp/v7-static && python3 -m http.server -d /tmp/v7-static 8765   # 只读静态
 ```
