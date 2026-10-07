@@ -73,7 +73,7 @@ export function buildTree(g: Graph): TreeNode[] {
   const solutions = g.index.applications.filter(e => e.kind === 'solution')
   const solutionGroup: TreeNode[] = solutions.length ? [{ id: 'solutions', label: '方案', icon: '🧩', children: solutions.map(t => ({ id: t.id, label: t.name, icon: '🧩' })) }] : []
   const applications: TreeNode = {
-    id: 'applications', label: '应用视图', icon: '🏗️', children: [...solutionGroup, ...apps.map(app => {
+    id: 'applications', label: '应用视图', icon: '🏗️', children: [...solutionGroup, ...packageTree('applications', apps, app => {
       const ucs = kids(app, 'app-use-case')
       const pages = kids(app, 'page')
       const resources = kids(app, 'resource')

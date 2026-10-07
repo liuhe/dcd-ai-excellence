@@ -49,6 +49,7 @@ v7 之前（v1..v6.2 方法论迭代）的历史，见 `v6/v6.2/` 及其祖先�
 - CLI：`list` / `get` 显示 id + name + 归属；`add-node --parent / --package`，`--set` 接受 JSON 结构值；`update-node --set name/package/parent`；`remove-node` 级联；新增 `init`；`migrate` 支持新建 / 删除文件与报告；`vt` 建在节点之上
 - kg-web：server 线上形状保持 `kind:id`；client 新建节点走 parent；6.0 模型给迁移提示
 - studio：侧边栏由 core `buildTree` 按 index 渲染；渲染层经 `graph-to-model.ts` 投影（过渡方案，加编辑能力时重写）
+- studio：应用视图侧边栏按 application 的 package 折成 📦 文件夹（多级），与用例 / 资源列表同一套 `packageTree`；此前 application 的 package 只在 CLI 与详情页可见，侧边栏平铺
 
 ## [Unreleased] — 2026-08-13（vocabulary v6.0 audit round-4，未发布）
 
